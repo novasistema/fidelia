@@ -1,0 +1,6 @@
+{
+  "name": "Tienda de Puntos - Fidelización de Clientes",
+  "description": "Plataforma integral de fidelización de clientes con portal para clientes, panel de administración, catálogo de recompensas, popup de promociones, puntos por compra, encuestas, sorteos y métricas en tiempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

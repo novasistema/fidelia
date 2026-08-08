@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "storeSettings": {
+      "title": "Configuración de la Tienda",
+      "description": "Configuración general del comercio y reglas de puntos",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "brandName": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "primaryColor": { "type": "string" },
+        "pointsPerPeso": { "type": "number" },
+        "welcomePoints": { "type": "number" },
+        "currencySymbol": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "address": { "type": "string" },
+        "instagramUrl": { "type": "string" },
+        "websiteUrl": { "type": "string" },
+        "poweredByText": { "type": "string" },
+        "poweredByUrl": { "type": "string" },
+        "ownerPin": { "type": "string" }
+      }
+    },
+    "customers": {
+      "title": "Clientes",
+      "description": "Clientes registrados en el programa de fidelización",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string" },
+        "dni": { "type": "string" },
+        "phone": { "type": "string" },
+        "gender": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "points": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "tierId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "avatarUrl": { "type": "string" }
+      }
+    },
+    "rewards": {
+      "title": "Catálogo de Premios",
+      "description": "Premios disponibles para canje",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "pointsCost": { "type": "number" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string font" },
+        "stock": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "code": { "type": "string" }
+      }
+    },
+    "movements": {
+      "title": "Movimientos de Puntos",
+      "description": "Historial de puntos ganados y canjeados",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "type": { "type": "string" },
+        "points": { "type": "number" },
+        "amountPeso": { "type": "number" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "branchId": { "type": "string" }
+      }
+    }
+  }
+}
