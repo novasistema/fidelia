@@ -4,7 +4,9 @@ import { CustomerUser } from '../../types';
 import { Users, Search, Plus, Minus, Edit2, ShieldAlert, Zap, Filter } from 'lucide-react';
 
 export const AdminCustomers: React.FC = () => {
-  const { customers, adjustCustomerPoints, previewCustomerView, tiers } = useLoyalty();
+  const { customers, adjustCustomerPoints, tiers, tierOf, movements, staffRole } = useLoyalty();
+  const [historyCust, setHistoryCust] = useState<CustomerUser | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const [search, setSearch] = useState('');
   const [selectedTierFilter, setSelectedTierFilter] = useState('todos');
@@ -20,16 +22,23 @@ export const AdminCustomers: React.FC = () => {
       c.lastName.toLowerCase().includes(search.toLowerCase()) ||
       c.email.toLowerCase().includes(search.toLowerCase()) ||
       c.dni.includes(search);
-    const matchesTier = selectedTierFilter === 'todos' || c.tierId === selectedTierFilter;
+    const matchesTier = selectedTierFilter === 'todos' || tierOf(c).id === selectedTierFilter;
     return matchesSearch && matchesTier;
   });
 
-  const handleAdjustSubmit = (e: React.FormEvent) => {
+  const handleAdjustSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjustCust) return;
 
-    adjustCustomerPoints(adjustCust.id, pointsDelta, adjustNote);
-    setAdjustCust(null);
+    setBusy(true);
+    try {
+      await adjustCustomerPoints(adjustCust.id, pointsDelta, adjustNote);
+      setAdjustCust(null);
+    } catch (err: any) {
+      alert(err?.message || 'No se pudo ajustar.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -95,7 +104,7 @@ export const AdminCustomers: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredCustomers.map(cust => {
-                const tier = tiers.find(t => t.id === cust.tierId) || tiers[0];
+                const tier = tierOf(cust);
                 return (
                   <tr key={cust.id} className="hover:bg-slate-50/80 transition">
                     <td className="p-4 font-bold text-slate-800 flex items-center space-x-3">
@@ -128,18 +137,20 @@ export const AdminCustomers: React.FC = () => {
                     </td>
 
                     <td className="p-4 text-right space-x-2">
-                      <button
-                        onClick={() => setAdjustCust(cust)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-[11px] transition"
-                      >
-                        Ajustar Puntos
-                      </button>
+                      {staffRole === 'owner' && (
+                        <button
+                          onClick={() => setAdjustCust(cust)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-[11px] transition"
+                        >
+                          Ajustar Puntos
+                        </button>
+                      )}
 
                       <button
-                        onClick={() => previewCustomerView(cust)}
+                        onClick={() => setHistoryCust(cust)}
                         className="px-3 py-1.5 bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold rounded-xl text-[11px] transition"
                       >
-                        Simular Vista
+                        Movimientos
                       </button>
                     </td>
                   </tr>
@@ -200,12 +211,41 @@ export const AdminCustomers: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-md text-xs transition"
+                  disabled={busy}
+                  className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md text-xs transition"
                 >
-                  Guardar Ajuste
+                  {busy ? 'Guardando...' : 'Guardar Ajuste'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {historyCust && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setHistoryCust(null)}>
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-3 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-lg">{historyCust.name} {historyCust.lastName}</h3>
+                <p className="text-xs text-slate-500">DNI {historyCust.dni} · {historyCust.email}{historyCust.phone ? ` · ${historyCust.phone}` : ''}</p>
+              </div>
+              <button onClick={() => setHistoryCust(null)} className="text-slate-400 hover:text-slate-700 text-sm font-bold">✕</button>
+            </div>
+            <div className="text-xs text-slate-600">
+              Saldo: <strong>{(customers.find(c => c.id === historyCust.id)?.points ?? historyCust.points).toLocaleString('es-AR')} pts</strong> · Ganados en total: {(historyCust.totalEarned ?? 0).toLocaleString('es-AR')} · Nivel {tierOf(historyCust).name}
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {movements.filter(m => m.customerId === historyCust.id).map(m => (
+                <li key={m.id} className="py-2 flex justify-between gap-3 text-xs">
+                  <div>
+                    <div className="font-semibold text-slate-700">{m.description}</div>
+                    <div className="text-slate-400">{m.date}{m.staffEmail ? ` · ${m.staffEmail}` : ''}</div>
+                  </div>
+                  <span className={`font-mono font-bold ${m.points >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{m.points >= 0 ? '+' : ''}{m.points}</span>
+                </li>
+              ))}
+              {!movements.some(m => m.customerId === historyCust.id) && <li className="py-4 text-center text-xs text-slate-400">Sin movimientos.</li>}
+            </ul>
           </div>
         </div>
       )}

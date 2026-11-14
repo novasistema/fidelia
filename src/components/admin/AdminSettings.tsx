@@ -1,52 +1,84 @@
 import React, { useState } from 'react';
 import { useLoyalty } from '../../context/LoyaltyContext';
-import { Settings, QrCode, Store, MapPin, Save, Check, ExternalLink, Share2, Copy, Globe, Instagram, Phone, Mail, Zap, Lock } from 'lucide-react';
+import { Settings, QrCode, Store, MapPin, Save, Check, ExternalLink, Share2, Copy, Globe, Instagram, Phone, Mail, Zap, Lock, Trash2, Plus } from 'lucide-react';
+import { storeUrl } from '../../lib/route';
+import { Branch } from '../../types';
 
 export const AdminSettings: React.FC = () => {
-  const { storeSettings, updateStoreSettings, branches } = useLoyalty();
+  const { storeSettings, updateStoreSettings, branches, storeId } = useLoyalty();
 
   const [name, setName] = useState(storeSettings.name);
-  const [brandName, setBrandName] = useState(storeSettings.brandName || 'TuMarca');
+  const [brandName, setBrandName] = useState(storeSettings.brandName || storeSettings.name);
   const [logoUrl, setLogoUrl] = useState(storeSettings.logoUrl);
   const [primaryColor, setPrimaryColor] = useState(storeSettings.primaryColor);
   const [pointsPerPeso, setPointsPerPeso] = useState(storeSettings.pointsPerPeso);
-  const [welcomePoints, setWelcomePoints] = useState(storeSettings.welcomePoints);
-  const [ownerPin, setOwnerPin] = useState(storeSettings.ownerPin || '1234');
+  const [welcomePoints, setWelcomePoints] = useState(storeSettings.welcomePoints ?? 0);
+  const [referralPoints, setReferralPoints] = useState(storeSettings.referralPoints ?? 0);
+  const [address, setAddress] = useState(storeSettings.address || '');
+  const [branchDraft, setBranchDraft] = useState<Branch[]>(branches);
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   // Contact & Social fields requested by user
   const [instagramUrl, setInstagramUrl] = useState(storeSettings.instagramUrl || '');
   const [websiteUrl, setWebsiteUrl] = useState(storeSettings.websiteUrl || '');
   const [whatsappNumber, setWhatsappNumber] = useState(storeSettings.whatsappNumber || '');
   const [contactEmail, setContactEmail] = useState(storeSettings.contactEmail || '');
-  const [poweredByText, setPoweredByText] = useState(storeSettings.poweredByText || 'TuMarca');
-  const [poweredByUrl, setPoweredByUrl] = useState(storeSettings.poweredByUrl || '');
 
   const [savedMsg, setSavedMsg] = useState(false);
   const [copiedLink, setCopiedLink] = useState('');
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateStoreSettings({
-      name,
-      brandName: brandName || 'TuMarca',
-      logoUrl,
-      primaryColor,
-      pointsPerPeso,
-      welcomePoints,
-      ownerPin: ownerPin || '1234',
-      instagramUrl,
-      websiteUrl,
-      whatsappNumber,
-      contactEmail,
-      poweredByText,
-      poweredByUrl
-    });
-    setSavedMsg(true);
-    setTimeout(() => setSavedMsg(false), 2500);
+    setSaveError('');
+    setSaving(true);
+    try {
+      await updateStoreSettings({
+        name,
+        brandName: brandName || name,
+        logoUrl,
+        primaryColor,
+        pointsPerPeso,
+        welcomePoints,
+        referralPoints,
+        address,
+        instagramUrl,
+        websiteUrl,
+        whatsappNumber,
+        contactEmail,
+        branches: branchDraft.filter(b => b.name.trim())
+      });
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2500);
+    } catch (err: any) {
+      setSaveError(err?.message || 'No se pudo guardar.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const clientAccessUrl = `${window.location.origin}/?role=client`;
-  const adminAccessUrl = `${window.location.origin}/?role=admin`;
+  // Logo desde archivo: se achica a 256px para que pese poco
+  const handleLogoFile = (file?: File) => {
+    if (!file) return;
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = () => {
+      img.onload = () => {
+        const max = 256;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setLogoUrl(canvas.toDataURL('image/png'));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clientAccessUrl = storeId ? storeUrl(storeId) : '';
+  const adminAccessUrl = `${window.location.origin}/admin`;
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -125,18 +157,7 @@ export const AdminSettings: React.FC = () => {
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={e => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (evt) => {
-                          if (evt.target?.result) {
-                            setLogoUrl(evt.target.result as string);
-                          }
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
+                    onChange={e => handleLogoFile(e.target.files?.[0])}
                   />
                 </label>
 
@@ -146,7 +167,7 @@ export const AdminSettings: React.FC = () => {
                     onClick={() => setLogoUrl('')}
                     className="px-2.5 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 text-xs font-semibold rounded-xl transition"
                   >
-                    Usar 'TuMarca' por defecto
+                    Quitar logo
                   </button>
                 )}
               </div>
@@ -234,35 +255,18 @@ export const AdminSettings: React.FC = () => {
             </div>
           </div>
 
-          {/* Configuración de Clave de Seguridad / Acceso Dueño */}
-          <div className="p-4 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-xs uppercase tracking-wider text-indigo-950 flex items-center space-x-1.5">
-                <Lock className="w-4 h-4 text-indigo-600" />
-                <span>Seguridad: Clave de Acceso al Panel de Comercio</span>
-              </h4>
-              <span className="text-[10px] font-bold px-2.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full border border-indigo-300">
-                Acceso Dueño
-              </span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Clave de Comercio (Por defecto: 1234)
-              </label>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={ownerPin}
-                  onChange={e => setOwnerPin(e.target.value)}
-                  placeholder="Ej. 1234"
-                  className="w-full max-w-xs px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Esta es la clave confidencial necesaria para ingresar al Panel de Dueño desde el portal del cliente. Podés cambiarla en cualquier momento.
-              </p>
-            </div>
+          {/* Puntos por referidos */}
+          <div className="p-4 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl space-y-2">
+            <h4 className="font-extrabold text-xs uppercase tracking-wider text-indigo-950">Programa de referidos</h4>
+            <label className="block text-xs font-bold text-slate-700">Puntos para cada uno cuando el invitado hace su primera compra</label>
+            <input
+              type="number"
+              min="0"
+              value={referralPoints}
+              onChange={e => setReferralPoints(Number(e.target.value) || 0)}
+              className="w-full max-w-xs px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <p className="text-[11px] text-slate-500">Se acreditan solos al invitado y a quien lo invitó, recién en la primera compra (así nadie gana puntos con registros falsos).</p>
           </div>
 
           {/* Contact Data & Social Links Section requested by user */}
@@ -330,43 +334,52 @@ export const AdminSettings: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-              <span className="text-xs font-extrabold text-slate-700 block">Texto Pie de Página (Powered By):</span>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Nombre Marca / Sistema</label>
-                  <input
-                    type="text"
-                    value={poweredByText}
-                    onChange={e => {
-                      setPoweredByText(e.target.value);
-                      setBrandName(e.target.value);
-                    }}
-                    placeholder="Ej. TuMarca"
-                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1">URL al Hacer Clic</label>
-                  <input
-                    type="url"
-                    value={poweredByUrl}
-                    onChange={e => setPoweredByUrl(e.target.value)}
-                    placeholder="https://tumarca.com"
-                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
-                  />
+          </div>
+
+          {/* Sucursales */}
+          <div className="pt-3 border-t border-slate-100 space-y-3">
+            <h4 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+              <MapPin className="w-3.5 h-3.5 text-sky-600" />
+              <span>Sucursales</span>
+            </h4>
+            <div className="grid grid-cols-1 gap-2">
+              <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Dirección principal del comercio" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+            </div>
+            {branchDraft.map((b, i) => (
+              <div key={b.id} className="p-3 bg-slate-50 border border-slate-200 rounded-2xl grid grid-cols-2 gap-2">
+                <input value={b.name} onChange={e => setBranchDraft(d => d.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Nombre" className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs" />
+                <input value={b.phone} onChange={e => setBranchDraft(d => d.map((x, j) => (j === i ? { ...x, phone: e.target.value } : x)))} placeholder="Teléfono" className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs" />
+                <input value={b.address} onChange={e => setBranchDraft(d => d.map((x, j) => (j === i ? { ...x, address: e.target.value } : x)))} placeholder="Dirección" className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs" />
+                <input value={b.city} onChange={e => setBranchDraft(d => d.map((x, j) => (j === i ? { ...x, city: e.target.value } : x)))} placeholder="Ciudad" className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs" />
+                <input value={b.hours} onChange={e => setBranchDraft(d => d.map((x, j) => (j === i ? { ...x, hours: e.target.value } : x)))} placeholder="Horarios" className="col-span-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs" />
+                <div className="col-span-2 flex justify-between items-center">
+                  <label className="text-[11px] text-slate-600 flex items-center gap-1">
+                    <input type="checkbox" checked={!!b.isMain} onChange={e => setBranchDraft(d => d.map((x, j) => ({ ...x, isMain: j === i ? e.target.checked : e.target.checked ? false : x.isMain })))} />
+                    Casa central
+                  </label>
+                  <button type="button" onClick={() => setBranchDraft(d => d.filter((_, j) => j !== i))} className="text-slate-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               </div>
-            </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setBranchDraft(d => [...d, { id: `b_${Date.now()}`, name: '', address: '', city: '', phone: '', hours: '' }])}
+              className="text-xs font-bold text-sky-600 hover:underline flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" /> Agregar sucursal
+            </button>
           </div>
+
+          {saveError && <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200 font-semibold">{saveError}</div>}
 
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-1.5"
+              disabled={saving}
+              className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-1.5"
             >
               <Save className="w-4 h-4" />
-              <span>Guardar Configuración</span>
+              <span>{saving ? 'Guardando...' : 'Guardar Configuración'}</span>
             </button>
           </div>
         </form>

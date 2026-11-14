@@ -9,6 +9,7 @@ export const SurveysView: React.FC = () => {
   const [activeSurvey, setActiveSurvey] = useState<Survey | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ success: boolean; text: string } | null>(null);
+  const [sending, setSending] = useState(false);
 
   if (!currentCustomer) return null;
 
@@ -18,11 +19,13 @@ export const SurveysView: React.FC = () => {
     setMessage(null);
   };
 
-  const handleSubmitAnswers = (e: React.FormEvent) => {
+  const handleSubmitAnswers = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeSurvey) return;
+    if (!activeSurvey || sending) return;
 
-    const res = completeSurvey(activeSurvey.id, answers);
+    setSending(true);
+    const res = await completeSurvey(activeSurvey.id, answers);
+    setSending(false);
     if (res.success) {
       confetti({ particleCount: 80, spread: 60 });
       setMessage({ success: true, text: res.message });
@@ -134,16 +137,17 @@ export const SurveysView: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm rounded-2xl shadow-lg transition"
+              disabled={sending}
+              className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-sm rounded-2xl shadow-lg transition"
             >
-              Enviar Encuesta y Sumar Puntos
+              {sending ? 'Enviando...' : 'Enviar Encuesta y Sumar Puntos'}
             </button>
           </form>
         </div>
       ) : (
         <div className="space-y-4">
           {surveys.filter(s => s.isActive).map(survey => {
-            const isCompleted = survey.completedCustomerIds.includes(currentCustomer.id);
+            const isCompleted = (survey.completedCustomerIds || []).includes(currentCustomer.id);
             return (
               <div
                 key={survey.id}

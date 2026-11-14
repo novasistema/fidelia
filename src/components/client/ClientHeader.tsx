@@ -7,11 +7,11 @@ export const ClientHeader: React.FC<{ onOpenSidebar: () => void; onOpenQRScan?: 
   onOpenSidebar,
   onOpenQRScan
 }) => {
-  const { currentCustomer, storeSettings, tiers } = useLoyalty();
+  const { currentCustomer, storeSettings, tierOf } = useLoyalty();
 
   if (!currentCustomer) return null;
 
-  const currentTier = tiers.find(t => t.id === currentCustomer.tierId) || tiers[0];
+  const currentTier = tierOf(currentCustomer);
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-4 py-2.5 shadow-xs">

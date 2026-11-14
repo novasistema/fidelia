@@ -9,8 +9,12 @@ export const AdminPointsManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'direct' | 'qr' | 'validate'>('direct');
 
   // Direct points addition form
-  const [selectedCustomerId, setSelectedCustomerId] = useState(customers[0]?.id || '');
-  const [purchaseAmount, setPurchaseAmount] = useState<number | ''>(15000);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [qrExpiresHours, setQrExpiresHours] = useState<number>(24);
+  const [purchaseAmount, setPurchaseAmount] = useState<number | ''>('');
   const [manualPoints, setManualPoints] = useState<number | ''>('');
   const [note, setNote] = useState('');
   const [directSuccessMsg, setDirectSuccessMsg] = useState('');
@@ -47,15 +51,28 @@ export const AdminPointsManager: React.FC = () => {
     }
   };
 
-  const handleDirectSubmit = (e: React.FormEvent) => {
+  const handleDirectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCustomerId) return;
+    setErrorMsg('');
+    if (!selectedCustomerId) {
+      setErrorMsg('Buscá y elegí un cliente.');
+      return;
+    }
 
     const amount = Number(purchaseAmount) || 0;
     const manual = manualPoints ? Number(manualPoints) : undefined;
 
     const cust = customers.find(c => c.id === selectedCustomerId);
-    const mov = addPointsToCustomer(selectedCustomerId, amount, manual, note);
+    let mov;
+    setBusy(true);
+    try {
+      mov = await addPointsToCustomer(selectedCustomerId, amount, manual, note);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'No se pudieron cargar los puntos.');
+      return;
+    } finally {
+      setBusy(false);
+    }
     confetti({ particleCount: 60, spread: 50 });
 
     const custName = `${cust?.name || ''} ${cust?.lastName || ''}`.trim();
@@ -72,12 +89,22 @@ export const AdminPointsManager: React.FC = () => {
     
     // reset form
     setNote('');
+    setPurchaseAmount('');
+    setManualPoints('');
   };
 
-  const handleGenerateQR = (e: React.FormEvent) => {
+  const handleGenerateQR = async (e: React.FormEvent) => {
     e.preventDefault();
-    const link = generateQRPointLink(qrPoints, qrDescription);
-    setGeneratedLink(link);
+    setErrorMsg('');
+    setBusy(true);
+    try {
+      const link = await generateQRPointLink(qrPoints, qrDescription, qrExpiresHours);
+      setGeneratedLink(link);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'No se pudo generar el QR.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleCopyLink = () => {
@@ -86,11 +113,13 @@ export const AdminPointsManager: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleValidateVoucherSubmit = (e: React.FormEvent) => {
+  const handleValidateVoucherSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!voucherCode) return;
 
-    const res = validateVoucher(voucherCode);
+    setBusy(true);
+    const res = await validateVoucher(voucherCode);
+    setBusy(false);
     if (res.success) {
       confetti({ particleCount: 70, spread: 60 });
     }
@@ -98,6 +127,11 @@ export const AdminPointsManager: React.FC = () => {
   };
 
   const selectedCust = customers.find(c => c.id === selectedCustomerId);
+  const q = customerSearch.trim().toLowerCase();
+  const filteredCustomers = (q
+    ? customers.filter(c => `${c.name} ${c.lastName} ${c.dni} ${c.email} ${c.phone || ''}`.toLowerCase().includes(q))
+    : customers
+  ).slice(0, 200);
   const estimatedPoints = Math.floor((Number(purchaseAmount) || 0) * storeSettings.pointsPerPeso);
 
   return (
@@ -118,6 +152,10 @@ export const AdminPointsManager: React.FC = () => {
           <Zap className="w-6 h-6" />
         </div>
       </div>
+
+      {errorMsg && (
+        <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200 font-semibold">{errorMsg}</div>
+      )}
 
       {/* Tabs Switcher - Matching Screenshot 9 */}
       <div className="bg-slate-100 p-1.5 rounded-2xl flex items-center space-x-1">
@@ -194,6 +232,13 @@ export const AdminPointsManager: React.FC = () => {
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Seleccionar Cliente (Email / DNI / Nombre) *
             </label>
+            <input
+              type="text"
+              value={customerSearch}
+              onChange={e => setCustomerSearch(e.target.value)}
+              placeholder="Buscar por DNI, nombre, email o teléfono..."
+              className="w-full mb-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
             <select
               value={selectedCustomerId}
               onChange={e => {
@@ -202,7 +247,8 @@ export const AdminPointsManager: React.FC = () => {
               }}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
             >
-              {customers.map(c => (
+              <option value="">{customers.length ? `Elegir cliente (${filteredCustomers.length} encontrados)` : 'Todavía no hay clientes registrados'}</option>
+              {filteredCustomers.map(c => (
                 <option key={c.id} value={c.id}>
                   {c.name} {c.lastName} — DNI: {c.dni} — {c.email} (Puntos actuales: {c.points})
                 </option>
@@ -452,12 +498,16 @@ export const AdminPointsManager: React.FC = () => {
             </div>
           </div>
 
+          <p className="text-[11px] text-slate-500">
+            Si no indicás puntos manuales, el sistema aplica automáticamente el multiplicador del nivel del cliente y las promociones activas del día.
+          </p>
           <button
             type="submit"
-            className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-sky-600/20 transition flex items-center justify-center space-x-2"
+            disabled={busy}
+            className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-sky-600/20 transition flex items-center justify-center space-x-2"
           >
             <Send className="w-4 h-4" />
-            <span>Entregar Puntos</span>
+            <span>{busy ? 'Acreditando...' : 'Entregar Puntos'}</span>
           </button>
         </form>
       )}
@@ -469,7 +519,7 @@ export const AdminPointsManager: React.FC = () => {
             Suma por QR o Enlace de Puntos
           </h3>
           <p className="text-xs text-slate-500">
-            Generá un código QR para mostrar en mostrador o un link para WhatsApp que permita a los clientes sumar puntos al escanear.
+            Generá un código QR para mostrar en mostrador o un link para WhatsApp. <strong>Cada QR sirve una sola vez</strong>: lo usa el primer cliente que lo escanea y después queda anulado.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -498,14 +548,30 @@ export const AdminPointsManager: React.FC = () => {
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Vence en</label>
+              <select
+                value={qrExpiresHours}
+                onChange={e => setQrExpiresHours(Number(e.target.value))}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                <option value={1}>1 hora</option>
+                <option value={24}>24 horas</option>
+                <option value={72}>3 días</option>
+                <option value={168}>7 días</option>
+                <option value={720}>30 días</option>
+              </select>
+            </div>
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-1.5"
+            disabled={busy}
+            className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-1.5"
           >
             <QrCode className="w-4 h-4" />
-            <span>Generar Código QR y Enlace</span>
+            <span>{busy ? 'Generando...' : 'Generar Código QR y Enlace'}</span>
           </button>
 
           {generatedLink && (

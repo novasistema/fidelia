@@ -9,20 +9,25 @@ export const AdminPopupManager: React.FC = () => {
   const [description, setDescription] = useState(popupBanner.description);
   const [imageUrl, setImageUrl] = useState(popupBanner.imageUrl);
   const [ctaText, setCtaText] = useState(popupBanner.ctaText);
-  const [ctaAction, setCtaAction] = useState(popupBanner.ctaAction || 'catalog');
+  const [ctaAction, setCtaAction] = useState<string>(popupBanner.ctaAction || 'catalog');
   const [isActive, setIsActive] = useState(popupBanner.isActive);
   const [savedMsg, setSavedMsg] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    updatePopupBanner({
-      title,
-      description,
-      imageUrl,
-      ctaText,
-      ctaAction: ctaAction as any,
-      isActive
-    });
+    try {
+      await updatePopupBanner({
+        title,
+        description,
+        imageUrl,
+        ctaText,
+        ctaAction: ctaAction as any,
+        isActive
+      });
+    } catch (err: any) {
+      alert(err?.message || 'No se pudo guardar.');
+      return;
+    }
     setSavedMsg(true);
     setTimeout(() => setSavedMsg(false), 2500);
   };

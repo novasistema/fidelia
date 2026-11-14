@@ -6,16 +6,20 @@ import confetti from 'canvas-confetti';
 export const RafflesView: React.FC = () => {
   const { currentCustomer, raffles, enterRaffle } = useLoyalty();
   const [msg, setMsg] = useState<{ id: string; text: string; success: boolean } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   if (!currentCustomer) return null;
 
-  const handleEnter = (raffleId: string) => {
-    const res = enterRaffle(raffleId);
+  const handleEnter = async (raffleId: string) => {
+    if (busyId) return;
+    setBusyId(raffleId);
+    const res = await enterRaffle(raffleId);
+    setBusyId(null);
     if (res.success) {
       confetti({ particleCount: 70, spread: 60 });
     }
     setMsg({ id: raffleId, text: res.message, success: res.success });
-    setTimeout(() => setMsg(null), 3000);
+    setTimeout(() => setMsg(null), 4000);
   };
 
   return (
@@ -34,7 +38,7 @@ export const RafflesView: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {raffles.map(raffle => {
-          const userParticipant = raffle.participants.find(p => p.customerId === currentCustomer.id);
+          const userParticipant = (raffle.participants || []).find(p => p.customerId === currentCustomer.id);
           const entriesCount = userParticipant ? userParticipant.entries : 0;
           const canAfford = currentCustomer.points >= raffle.entryCostPoints;
 
@@ -42,11 +46,11 @@ export const RafflesView: React.FC = () => {
             <div key={raffle.id} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden flex flex-col justify-between">
               <div>
                 <div className="relative h-48 bg-slate-900 overflow-hidden">
-                  <img
-                    src={raffle.imageUrl}
-                    alt={raffle.title}
-                    className="w-full h-full object-cover"
-                  />
+                  {raffle.imageUrl ? (
+                    <img src={raffle.imageUrl} alt={raffle.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-amber-400"><Trophy className="w-16 h-16" /></div>
+                  )}
                   <div className="absolute top-3 right-3 bg-amber-500 text-slate-950 font-black px-3 py-1 rounded-full text-xs shadow-md flex items-center space-x-1">
                     <Ticket className="w-3.5 h-3.5" />
                     <span>⚡ {raffle.entryCostPoints} pts por entrada</span>
@@ -86,7 +90,7 @@ export const RafflesView: React.FC = () => {
               <div className="p-6 pt-0 border-t border-slate-100 mt-2">
                 <button
                   onClick={() => handleEnter(raffle.id)}
-                  disabled={!canAfford || !raffle.isActive}
+                  disabled={!canAfford || !raffle.isActive || busyId !== null}
                   className={`w-full py-3 rounded-2xl font-bold text-xs shadow-md transition flex items-center justify-center space-x-1.5 ${
                     canAfford && raffle.isActive
                       ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/20'
@@ -94,7 +98,7 @@ export const RafflesView: React.FC = () => {
                   }`}
                 >
                   <Ticket className="w-4 h-4" />
-                  <span>{canAfford ? 'Comprar entrada con puntos' : 'Puntos insuficientes'}</span>
+                  <span>{busyId === raffle.id ? 'Anotando...' : !raffle.isActive ? 'Sorteo finalizado' : canAfford ? 'Comprar entrada con puntos' : 'Puntos insuficientes'}</span>
                 </button>
               </div>
             </div>

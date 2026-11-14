@@ -1,450 +1,324 @@
-import React, { useState } from 'react';
-import { useLoyalty } from '../../context/LoyaltyContext';
+import React, { useMemo, useState } from 'react';
+import { useLoyalty, StoreSummary } from '../../context/LoyaltyContext';
+import { errMsg } from '../../lib/api';
+import { storeUrl } from '../../lib/route';
+import { Plus, Search, Power, ExternalLink, Shield, Store, AlertTriangle, CheckCircle2, LogOut, Copy, Check, Save } from 'lucide-react';
 import { FideliaLogo } from '../common/FideliaLogo';
-import {
-  ShieldAlert,
-  Power,
-  Trash2,
-  RefreshCw,
-  Users,
-  Award,
-  CreditCard,
-  Key,
-  Settings,
-  CheckCircle,
-  AlertOctagon,
-  Sparkles,
-  Database,
-  Lock,
-  DollarSign,
-  Info,
-  Calendar
-} from 'lucide-react';
-import confetti from 'canvas-confetti';
 
+const today = () => new Date().toISOString().slice(0, 10);
+const addDays = (d: number) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+const slugify = (t: string) =>
+  t
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+
+// Panel del creador de la plataforma: alta de comercios, suscripciones y suspensiones
 export const CreatorDashboard: React.FC = () => {
-  const {
-    storeSettings,
-    updateStoreSettings,
-    customers,
-    movements,
-    vouchers,
-    rewards,
-    wipeSystemDataToFactoryReset,
-    resetDemoData,
-    setCurrentRole
-  } = useLoyalty();
+  const { allStores, createStore, updateSubscription, authUser, logout } = useLoyalty();
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'todos' | 'activos' | 'vencidos' | 'suspendidos'>('todos');
+  const [showNew, setShowNew] = useState(false);
+  const [editing, setEditing] = useState<StoreSummary | null>(null);
+  const [copied, setCopied] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  // Custom Suspension Message state
-  const [suspensionMessage, setSuspensionMessage] = useState(
-    storeSettings.suspensionReason || 'El servicio de Fidelia para este comercio se encuentra suspendido temporalmente por falta de pago de suscripción.'
-  );
-  const [planName, setPlanName] = useState(storeSettings.clientPlanName || 'Plan Fidelia Pro');
-  const [dueDate, setDueDate] = useState(storeSettings.subscriptionDueDate || '2026-08-31');
+  // Formulario de alta
+  const [name, setName] = useState('');
+  const [storeId, setStoreId] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [plan, setPlan] = useState('Plan Fidelia');
+  const [dueDate, setDueDate] = useState(addDays(30));
 
-  // Master PIN state
-  const [creatorPin, setCreatorPin] = useState(storeSettings.creatorPin || '0000');
-  const [ownerPin, setOwnerPin] = useState(storeSettings.ownerPin || '1234');
-  const [pinSavedMsg, setPinSavedMsg] = useState(false);
+  // Formulario de suscripción
+  const [subDue, setSubDue] = useState('');
+  const [subPlan, setSubPlan] = useState('');
+  const [subFee, setSubFee] = useState<number | ''>('');
+  const [subReason, setSubReason] = useState('');
 
-  // Danger Zone / Wipe Confirmation Modal
-  const [showWipeModal, setShowWipeModal] = useState(false);
-  const [confirmInput, setConfirmInput] = useState('');
-  const [wipeSuccessMsg, setWipeSuccessMsg] = useState('');
+  const stats = useMemo(() => {
+    const active = allStores.filter(s => s.isSystemActive !== false);
+    return {
+      total: allStores.length,
+      active: active.length,
+      suspended: allStores.length - active.length,
+      overdue: active.filter(s => s.subscriptionDueDate && s.subscriptionDueDate < today()).length,
+      mrr: active.reduce((a, s) => a + (Number(s.monthlyFee) || 0), 0)
+    };
+  }, [allStores]);
 
-  const handleToggleSystemStatus = () => {
-    const newStatus = !storeSettings.isSystemActive;
-    updateStoreSettings({
-      isSystemActive: newStatus,
-      suspensionReason: suspensionMessage,
-      clientPlanName: planName,
-      subscriptionDueDate: dueDate
-    });
+  const list = allStores
+    .filter(s => {
+      const q = search.trim().toLowerCase();
+      if (q && !`${s.name} ${s.id}`.toLowerCase().includes(q)) return false;
+      if (filter === 'activos') return s.isSystemActive !== false;
+      if (filter === 'suspendidos') return s.isSystemActive === false;
+      if (filter === 'vencidos') return s.isSystemActive !== false && !!s.subscriptionDueDate && s.subscriptionDueDate < today();
+      return true;
+    })
+    .sort((a, b) => String(a.subscriptionDueDate || '9').localeCompare(String(b.subscriptionDueDate || '9')));
 
-    if (newStatus) {
-      confetti({ particleCount: 80, spread: 60 });
+  const run = async (fn: () => Promise<void>) => {
+    setError('');
+    setBusy(true);
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      setError(errMsg(e));
+      return false;
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const submitNew = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateStoreSettings({
-      suspensionReason: suspensionMessage,
-      clientPlanName: planName,
-      subscriptionDueDate: dueDate,
-      creatorPin,
-      ownerPin
-    });
-    setPinSavedMsg(true);
-    setTimeout(() => setPinSavedMsg(false), 3000);
-  };
-
-  const handleConfirmFactoryReset = () => {
-    if (confirmInput.trim().toUpperCase() === 'BORRAR TODO') {
-      wipeSystemDataToFactoryReset();
-      setShowWipeModal(false);
-      setConfirmInput('');
-      setWipeSuccessMsg('¡El sistema ha sido reseteado al 100%! Todos los datos fueron borrados para comenzar desde cero.');
-      setTimeout(() => setWipeSuccessMsg(''), 5000);
+    const ok = await run(() => createStore({ storeId, name, ownerEmail, ownerName, clientPlanName: plan, subscriptionDueDate: dueDate }));
+    if (ok) {
+      setShowNew(false);
+      setName('');
+      setStoreId('');
+      setOwnerEmail('');
+      setOwnerName('');
     }
   };
 
-  // Stats
-  const totalCustomers = customers.length;
-  const totalPointsInCirculation = customers.reduce((sum, c) => sum + (c.points || 0), 0);
-  const totalMovementsCount = movements.length;
-  const totalVouchersRedeemed = vouchers.length;
+  const openEdit = (s: StoreSummary) => {
+    setEditing(s);
+    setSubDue(s.subscriptionDueDate || '');
+    setSubPlan(s.clientPlanName || '');
+    setSubFee(s.monthlyFee ?? '');
+    setSubReason(s.suspensionReason || '');
+    setError('');
+  };
+
+  const saveSub = async () => {
+    if (!editing) return;
+    const ok = await run(() =>
+      updateSubscription(editing.id, { subscriptionDueDate: subDue, clientPlanName: subPlan, monthlyFee: Number(subFee) || 0, suspensionReason: subReason })
+    );
+    if (ok) setEditing(null);
+  };
+
+  const toggleActive = (s: StoreSummary) => {
+    const activate = s.isSystemActive === false;
+    if (!activate && !window.confirm(`¿Suspender ${s.name}? El comercio y sus clientes no podrán usar el sistema hasta que lo reactives.`)) return;
+    run(() =>
+      updateSubscription(s.id, {
+        isSystemActive: activate,
+        ...(activate ? {} : { suspensionReason: s.suspensionReason || 'Servicio suspendido por falta de pago de la suscripción.' })
+      })
+    );
+  };
+
+  const copy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(text);
+    setTimeout(() => setCopied(''), 1800);
+  };
+
+  const input = 'w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
-      {/* Top Banner Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-sky-950 p-6 rounded-3xl border border-sky-500/30 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-        <div className="flex items-center space-x-4 z-10">
-          <FideliaLogo size="md" variant="iconOnly" />
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 text-[10px] font-black uppercase tracking-wider flex items-center space-x-1">
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>Panel SuperAdmin Creador</span>
-              </span>
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${
-                storeSettings.isSystemActive !== false
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
-                  : 'bg-rose-500/20 text-rose-300 border-rose-400/30'
-              }`}>
-                {storeSettings.isSystemActive !== false ? '🟢 Sistema Activo' : '🔴 Sistema Suspendido'}
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white mt-1 tracking-tight">
-              Control Total de Plataforma Fidelia
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Gestión exclusiva del creador para el comercio <strong className="text-white">{storeSettings.brandName}</strong>.
-            </p>
-          </div>
+    <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <FideliaLogo size="sm" variant="horizontal" darkBackground />
+          <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] font-bold">Panel del creador</span>
         </div>
-
-        <div className="flex items-center space-x-3 z-10 w-full md:w-auto justify-end">
-          <button
-            onClick={() => setCurrentRole('admin')}
-            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition"
-          >
-            Ir a Panel Comercio
-          </button>
-          <button
-            onClick={() => setCurrentRole('client')}
-            className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold shadow-md transition"
-          >
-            Ir a Portal Cliente
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <span>{authUser?.email}</span>
+          <button onClick={() => logout()} className="p-2 hover:text-white hover:bg-slate-800 rounded-lg" title="Cerrar sesión">
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {wipeSuccessMsg && (
-        <div className="p-4 bg-emerald-500 text-slate-950 font-black rounded-2xl text-xs shadow-lg flex items-center space-x-2 animate-in fade-in duration-200">
-          <CheckCircle className="w-5 h-5 flex-shrink-0" />
-          <span>{wipeSuccessMsg}</span>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {[
+          ['Comercios', stats.total, 'text-white'],
+          ['Activos', stats.active, 'text-emerald-400'],
+          ['Vencidos', stats.overdue, 'text-amber-400'],
+          ['Suspendidos', stats.suspended, 'text-rose-400'],
+          ['Cobro mensual', `$${stats.mrr.toLocaleString('es-AR')}`, 'text-sky-400']
+        ].map(([label, value, cls]) => (
+          <div key={label as string} className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+            <div className="text-xs text-slate-400">{label}</div>
+            <div className={`text-2xl font-black font-mono ${cls}`}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {error && <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-800 text-rose-200 text-sm">{error}</div>}
+
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar comercio..." className={`${input} pl-9`} />
+        </div>
+        <select value={filter} onChange={e => setFilter(e.target.value as any)} className={`${input} sm:w-44`}>
+          <option value="todos">Todos</option>
+          <option value="activos">Activos</option>
+          <option value="vencidos">Vencidos</option>
+          <option value="suspendidos">Suspendidos</option>
+        </select>
+        <button onClick={() => setShowNew(true)} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm rounded-xl flex items-center justify-center gap-1.5">
+          <Plus className="w-4 h-4" /> Nuevo comercio
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {list.length === 0 && <div className="p-8 text-center text-slate-500 text-sm bg-slate-900 rounded-2xl border border-slate-800">No hay comercios {allStores.length ? 'con ese filtro' : 'todavía. Creá el primero.'}</div>}
+        {list.map(s => {
+          const active = s.isSystemActive !== false;
+          const overdue = active && !!s.subscriptionDueDate && s.subscriptionDueDate < today();
+          return (
+            <div key={s.id} className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center overflow-hidden shrink-0">
+                  {s.logoUrl ? <img src={s.logoUrl} alt="" className="w-full h-full object-cover" /> : <Store className="w-5 h-5 text-slate-500" />}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-bold text-white truncate">{s.name}</div>
+                  <div className="text-[11px] text-slate-500 font-mono">/c/{s.id}</div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {!active ? (
+                  <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Suspendido</span>
+                ) : overdue ? (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Vencido</span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Activo</span>
+                )}
+                <span className="text-slate-400">{s.clientPlanName || 'Sin plan'}</span>
+                <span className="text-slate-400">Vence: <strong className="text-slate-200">{s.subscriptionDueDate || '—'}</strong></span>
+                {!!s.monthlyFee && <span className="text-slate-400">${Number(s.monthlyFee).toLocaleString('es-AR')}/mes</span>}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={() => openEdit(s)} className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg">Suscripción</button>
+                <button
+                  onClick={() => toggleActive(s)}
+                  disabled={busy}
+                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1 ${active ? 'bg-rose-950/60 hover:bg-rose-900 text-rose-300' : 'bg-emerald-700 hover:bg-emerald-600 text-white'}`}
+                >
+                  <Power className="w-3.5 h-3.5" /> {active ? 'Suspender' : 'Reactivar'}
+                </button>
+                <a href={`/admin/${s.id}`} className="px-2.5 py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-bold rounded-lg flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5" /> Panel
+                </a>
+                <button onClick={() => copy(storeUrl(s.id))} className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg flex items-center gap-1">
+                  {copied === storeUrl(s.id) ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />} Link
+                </button>
+                <a href={`/c/${s.id}`} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg flex items-center gap-1">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showNew && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4" onClick={() => setShowNew(false)}>
+          <form onSubmit={submitNew} onClick={e => e.stopPropagation()} className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-3 text-white">
+            <h3 className="font-black text-lg">Nuevo comercio</h3>
+            <div>
+              <label className="text-xs text-slate-400">Nombre del comercio *</label>
+              <input
+                required
+                value={name}
+                onChange={e => {
+                  setName(e.target.value);
+                  if (!storeId || storeId === slugify(name)) setStoreId(slugify(e.target.value));
+                }}
+                className={input}
+                placeholder="Ej: Café Luna"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400">Link del comercio *</label>
+              <div className="flex items-center gap-1 text-xs text-slate-500">
+                <span className="shrink-0">{window.location.host}/c/</span>
+                <input required value={storeId} onChange={e => setStoreId(slugify(e.target.value))} className={input} placeholder="cafe-luna" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-slate-400">Email del dueño *</label>
+                <input required type="email" value={ownerEmail} onChange={e => setOwnerEmail(e.target.value)} className={input} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Nombre del dueño</label>
+                <input value={ownerName} onChange={e => setOwnerName(e.target.value)} className={input} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-slate-400">Plan</label>
+                <input value={plan} onChange={e => setPlan(e.target.value)} className={input} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Vence</label>
+                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={input} />
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500">El dueño entra en <strong>{window.location.host}/admin</strong> con ese email (Google o link por email) y configura su programa.</p>
+            {error && <div className="text-xs text-rose-300">{error}</div>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setShowNew(false)} className="px-4 py-2 bg-slate-800 rounded-xl text-sm">Cancelar</button>
+              <button type="submit" disabled={busy} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black rounded-xl text-sm">{busy ? 'Creando...' : 'Crear comercio'}</button>
+            </div>
+          </form>
         </div>
       )}
 
-      {/* Global System Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-md flex items-center space-x-4">
-          <div className="p-3 bg-sky-500/20 text-sky-400 rounded-2xl border border-sky-500/30">
-            <Users className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Clientes Registrados</span>
-            <span className="text-2xl font-black text-white">{totalCustomers.toLocaleString()}</span>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-md flex items-center space-x-4">
-          <div className="p-3 bg-amber-500/20 text-amber-400 rounded-2xl border border-amber-500/30">
-            <Sparkles className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Puntos en Circulación</span>
-            <span className="text-2xl font-black text-amber-300">{totalPointsInCirculation.toLocaleString()} pts</span>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-md flex items-center space-x-4">
-          <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
-            <Award className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Canjes Realizados</span>
-            <span className="text-2xl font-black text-emerald-300">{totalVouchersRedeemed.toLocaleString()}</span>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-md flex items-center space-x-4">
-          <div className="p-3 bg-indigo-500/20 text-indigo-400 rounded-2xl border border-indigo-500/30">
-            <Database className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Movimientos de Puntos</span>
-            <span className="text-2xl font-black text-indigo-300">{totalMovementsCount.toLocaleString()}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left Col: ACTIVAR / DESACTIVAR SISTEMA (SUSCRIPCIÓN POR FALTA DE PAGO) */}
-        <div className="lg:col-span-2 bg-slate-900 rounded-3xl p-6 border border-slate-800 space-y-6 shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-2.5 bg-rose-500/20 text-rose-400 rounded-2xl border border-rose-500/30">
-                <Power className="w-6 h-6" />
+      {editing && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4" onClick={() => setEditing(null)}>
+          <div onClick={e => e.stopPropagation()} className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-3 text-white">
+            <h3 className="font-black text-lg">Suscripción · {editing.name}</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-slate-400">Plan</label>
+                <input value={subPlan} onChange={e => setSubPlan(e.target.value)} className={input} />
               </div>
               <div>
-                <h3 className="font-extrabold text-lg text-white">
-                  Estado de Suscripción y Licencia del Comercio
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Active o desactive el sistema por falta de pago. Al desactivar, los clientes y administradores verán el bloqueo.
-                </p>
+                <label className="text-xs text-slate-400">Cuota mensual ($)</label>
+                <input type="number" min="0" value={subFee} onChange={e => setSubFee(e.target.value === '' ? '' : Number(e.target.value))} className={input} />
               </div>
             </div>
-
-            <button
-              onClick={handleToggleSystemStatus}
-              className={`px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg transition flex items-center space-x-2 border ${
-                storeSettings.isSystemActive !== false
-                  ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400/30'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/30'
-              }`}
-            >
-              <Power className="w-4 h-4" />
-              <span>
-                {storeSettings.isSystemActive !== false ? 'DESACTIVAR SISTEMA (Falta de Pago)' : 'ACTIVAR SISTEMA (Servicio Al Día)'}
-              </span>
-            </button>
-          </div>
-
-          <form onSubmit={handleSaveSettings} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center space-x-1">
-                  <CreditCard className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Nombre del Plan de Suscripción</span>
-                </label>
-                <input
-                  type="text"
-                  value={planName}
-                  onChange={e => setPlanName(e.target.value)}
-                  placeholder="Ej. Plan Fidelia Pro Mensual"
-                  className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center space-x-1">
-                  <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Fecha de Vencimiento de Suscripción</span>
-                </label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
+            <div>
+              <label className="text-xs text-slate-400">Vencimiento</label>
+              <div className="flex gap-2">
+                <input type="date" value={subDue} onChange={e => setSubDue(e.target.value)} className={input} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const base = subDue && subDue > today() ? new Date(subDue + 'T12:00:00') : new Date();
+                    base.setMonth(base.getMonth() + 1);
+                    setSubDue(base.toISOString().slice(0, 10));
+                  }}
+                  className="px-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold shrink-0"
+                >
+                  +1 mes
+                </button>
               </div>
             </div>
-
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center space-x-1">
-                <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                <span>Mensaje de Bloqueo Visible en Pantalla (Por Falta de Pago)</span>
-              </label>
-              <textarea
-                rows={3}
-                value={suspensionMessage}
-                onChange={e => setSuspensionMessage(e.target.value)}
-                placeholder="Mensaje a mostrar cuando se desactiva el servicio..."
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">
-                Este texto se muestra en pantalla completa a clientes y administradores cuando el sistema está desactivado.
-              </p>
+              <label className="text-xs text-slate-400">Mensaje si se suspende</label>
+              <textarea rows={2} value={subReason} onChange={e => setSubReason(e.target.value)} className={input} placeholder="Servicio suspendido por falta de pago." />
             </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs shadow-md transition"
-              >
-                Guardar Parámetros de Licencia
-              </button>
-
-              {pinSavedMsg && (
-                <span className="text-xs text-emerald-400 font-bold flex items-center space-x-1">
-                  <CheckCircle className="w-4 h-4" />
-                  <span>Configuración guardada correctamente</span>
-                </span>
-              )}
-            </div>
-          </form>
-        </div>
-
-        {/* Right Col: CLAVES MASTER Y SEGURIDAD */}
-        <div className="bg-slate-900 rounded-3xl p-6 border border-slate-800 space-y-6 shadow-xl">
-          <div className="flex items-center space-x-3 border-b border-slate-800 pb-3">
-            <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-2xl border border-indigo-500/30">
-              <Key className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="font-extrabold text-base text-white">Claves de Acceso Master</h3>
-              <p className="text-xs text-slate-400">Protección PIN para Creador y Dueño</p>
-            </div>
-          </div>
-
-          <form onSubmit={handleSaveSettings} className="space-y-4 text-xs">
-            <div>
-              <label className="block font-bold text-slate-300 mb-1 flex items-center space-x-1">
-                <Lock className="w-3.5 h-3.5 text-sky-400" />
-                <span>Clave de Creador / SuperAdmin (100% Control)</span>
-              </label>
-              <input
-                type="text"
-                value={creatorPin}
-                onChange={e => setCreatorPin(e.target.value)}
-                placeholder="Por defecto: 0000"
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl font-mono font-bold text-white text-center tracking-widest focus:ring-2 focus:ring-sky-500"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">
-                Le permite ingresar al Panel Creador desde cualquier pantalla de bloqueo.
-              </p>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-300 mb-1 flex items-center space-x-1">
-                <Lock className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Clave de Acceso Comercio / Dueño</span>
-              </label>
-              <input
-                type="text"
-                value={ownerPin}
-                onChange={e => setOwnerPin(e.target.value)}
-                placeholder="Por defecto: 1234"
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl font-mono font-bold text-white text-center tracking-widest focus:ring-2 focus:ring-indigo-500"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">
-                Clave de seguridad que debe ingresar el dueño/encargado para entrar al panel administrativo.
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition shadow-md"
-            >
-              Actualizar Claves Master
-            </button>
-          </form>
-        </div>
-      </div>
-
-      {/* DANGER ZONE: BORRAR DATOS PARA COMENZAR DE CERO */}
-      <div className="bg-gradient-to-br from-rose-950/60 via-slate-900 to-slate-900 rounded-3xl p-6 border border-rose-500/40 shadow-2xl space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-rose-500/30 pb-4">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 bg-rose-500/20 text-rose-400 rounded-2xl border border-rose-500/30">
-              <AlertOctagon className="w-7 h-7" />
-            </div>
-            <div>
-              <h3 className="font-black text-lg text-white flex items-center space-x-2">
-                <span>Zona Crítica: Restablecimiento de Fábrica y Borrado Cero</span>
-                <span className="px-2 py-0.5 bg-rose-500/30 text-rose-300 text-[10px] uppercase font-extrabold rounded-full border border-rose-400/40">
-                  Acción Irreversible
-                </span>
-              </h3>
-              <p className="text-xs text-slate-300">
-                Permite eliminar todos los registros de clientes, puntos, canjes, premios y comenzar la base de datos 100% limpia desde cero.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => {
-              setShowWipeModal(true);
-              setConfirmInput('');
-            }}
-            className="w-full sm:w-auto px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-2xl shadow-xl transition border border-rose-400/40 flex items-center justify-center space-x-2 active:scale-95"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>BORRAR DATOS Y COMENZAR DE CERO</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <div className="p-4 bg-slate-950/70 rounded-2xl border border-slate-800 space-y-1">
-            <h4 className="font-bold text-amber-300 flex items-center space-x-1">
-              <Info className="w-4 h-4" />
-              <span>¿Qué se borra con el Reseteo de Fábrica?</span>
-            </h4>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              Elimina todos los usuarios registrados, el historial de carga de puntos, canjes solicitados, vales activos, encuestas y sorteos creados.
-            </p>
-          </div>
-
-          <div className="p-4 bg-slate-950/70 rounded-2xl border border-slate-800 space-y-1">
-            <h4 className="font-bold text-sky-300 flex items-center space-x-1">
-              <RefreshCw className="w-4 h-4" />
-              <span>Restablecer Datos de Demostración</span>
-            </h4>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              Si solo desea recargar los datos iniciales de prueba (ej. clientes de ejemplo Tomas, María, Carlos) haga clic en el botón de recarga de la barra superior.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Wipe Modal Confirmation */}
-      {showWipeModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-rose-500/50 text-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative animate-in zoom-in-95 space-y-5">
-            <div className="text-center space-y-2">
-              <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/40 mx-auto flex items-center justify-center">
-                <Trash2 className="w-7 h-7" />
-              </div>
-              <h3 className="text-xl font-black text-white">Confirmación de Borrado Cero</h3>
-              <p className="text-xs text-slate-300">
-                Esta acción eliminará <strong className="text-rose-400">TODOS los clientes, transacciones de puntos y datos</strong>. La aplicación quedará completamente en blanco para iniciar desde cero.
-              </p>
-            </div>
-
-            <div className="p-3.5 bg-rose-950/40 rounded-2xl border border-rose-500/30 text-xs text-rose-200">
-              Para confirmar el borrado total, escriba exactamente: <strong className="text-white font-mono bg-rose-900/60 px-1.5 py-0.5 rounded">BORRAR TODO</strong>
-            </div>
-
-            <div className="space-y-2">
-              <input
-                type="text"
-                autoFocus
-                value={confirmInput}
-                onChange={e => setConfirmInput(e.target.value)}
-                placeholder="Escriba BORRAR TODO"
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-center text-sm font-mono font-bold text-white uppercase focus:outline-none focus:ring-2 focus:ring-rose-500"
-              />
-            </div>
-
-            <div className="flex space-x-3">
-              <button
-                type="button"
-                onClick={() => setShowWipeModal(false)}
-                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={confirmInput.trim().toUpperCase() !== 'BORRAR TODO'}
-                onClick={handleConfirmFactoryReset}
-                className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-black rounded-xl text-xs shadow-lg transition"
-              >
-                Confirmar Borrado Cero
+            {error && <div className="text-xs text-rose-300">{error}</div>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setEditing(null)} className="px-4 py-2 bg-slate-800 rounded-xl text-sm">Cancelar</button>
+              <button onClick={saveSub} disabled={busy} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black rounded-xl text-sm flex items-center gap-1.5">
+                <Save className="w-4 h-4" /> Guardar
               </button>
             </div>
           </div>

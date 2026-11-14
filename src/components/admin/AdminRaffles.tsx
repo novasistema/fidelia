@@ -5,40 +5,53 @@ import confetti from 'canvas-confetti';
 
 export const AdminRaffles: React.FC = () => {
   const { raffles, createRaffle, drawRaffleWinner } = useLoyalty();
+  const [endDate, setEndDate] = useState(() => new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]);
+  const [busy, setBusy] = useState(false);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [entryCostPoints, setEntryCostPoints] = useState(100);
-  const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=600&auto=format&fit=crop&q=80');
+  const [imageUrl, setImageUrl] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [drawResult, setDrawResult] = useState<{ id: string; winnerName?: string } | null>(null);
 
-  const handleCreateRaffle = (e: React.FormEvent) => {
+  const handleCreateRaffle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title) return;
 
-    createRaffle({
-      title,
-      description,
-      imageUrl,
-      entryCostPoints,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: '2025-03-30',
-      isActive: true
-    });
+    setBusy(true);
+    try {
+      await createRaffle({
+        title,
+        description,
+        imageUrl,
+        entryCostPoints,
+        startDate: new Date().toISOString().split('T')[0],
+        endDate,
+        isActive: true
+      });
+    } catch (err: any) {
+      alert(err?.message || 'No se pudo crear el sorteo.');
+      return;
+    } finally {
+      setBusy(false);
+    }
 
     setTitle('');
     setDescription('');
     setIsCreating(false);
   };
 
-  const handleDrawWinner = (raffleId: string) => {
-    const res = drawRaffleWinner(raffleId);
+  const handleDrawWinner = async (raffleId: string) => {
+    if (!window.confirm('¿Sortear ahora? El resultado es definitivo y el sorteo queda cerrado.')) return;
+    setBusy(true);
+    const res = await drawRaffleWinner(raffleId);
+    setBusy(false);
     if (res.success && res.winnerName) {
       confetti({ particleCount: 120, spread: 80 });
       setDrawResult({ id: raffleId, winnerName: res.winnerName });
     } else {
-      alert('No hay participantes registrados en este sorteo para sortear.');
+      alert(res.message || 'No hay participantes registrados en este sorteo para sortear.');
     }
   };
 
@@ -70,7 +83,11 @@ export const AdminRaffles: React.FC = () => {
           <div key={raffle.id} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden flex flex-col justify-between">
             <div>
               <div className="relative h-44 bg-slate-900">
-                <img src={raffle.imageUrl} alt={raffle.title} className="w-full h-full object-cover" />
+                {raffle.imageUrl ? (
+                  <img src={raffle.imageUrl} alt={raffle.title} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-amber-400"><Trophy className="w-14 h-14" /></div>
+                )}
                 <div className="absolute top-3 right-3 bg-slate-900/90 text-white px-2.5 py-0.5 rounded-full text-xs font-bold">
                   ⚡ {raffle.entryCostPoints} pts / entrada
                 </div>
@@ -85,8 +102,19 @@ export const AdminRaffles: React.FC = () => {
                 </p>
 
                 <div className="pt-2 text-xs font-bold text-slate-700">
-                  Participantes inscritos: {raffle.participants.length}
+                  Participantes inscritos: {(raffle.participants || []).length} · Chances: {(raffle.participants || []).reduce((a, p) => a + p.entries, 0)}
+                  {raffle.endDate && <span className="text-slate-400 font-medium"> · Cierra {raffle.endDate}</span>}
                 </div>
+                {(raffle.participants || []).length > 0 && (
+                  <details className="text-xs text-slate-600">
+                    <summary className="cursor-pointer font-semibold">Ver participantes</summary>
+                    <ul className="mt-1 space-y-0.5 max-h-32 overflow-y-auto">
+                      {[...raffle.participants].sort((a, b) => b.entries - a.entries).map(p => (
+                        <li key={p.customerId} className="flex justify-between"><span>{p.customerName}</span><span className="font-mono">{p.entries}</span></li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
 
                 {raffle.winnerCustomerName && (
                   <div className="p-3 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl font-bold text-xs flex items-center space-x-2">
@@ -101,7 +129,8 @@ export const AdminRaffles: React.FC = () => {
               {raffle.isActive ? (
                 <button
                   onClick={() => handleDrawWinner(raffle.id)}
-                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-1"
+                  disabled={busy}
+                  className="disabled:opacity-50 w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-1"
                 >
                   <Award className="w-4 h-4" />
                   <span>Realizar Sorteo Automático</span>
@@ -159,7 +188,17 @@ export const AdminRaffles: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">URL de Imagen</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Cierre de inscripción</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">URL de Imagen (opcional)</label>
                   <input
                     type="url"
                     value={imageUrl}

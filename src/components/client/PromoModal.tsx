@@ -6,16 +6,24 @@ export const PromoModal: React.FC<{ onNavigateToSection?: (section: string) => v
   const { popupBanner, currentRole } = useLoyalty();
   const [isOpen, setIsOpen] = useState(false);
 
+  // Se muestra una vez por sesión (no vuelve a abrirse cada vez que llegan datos nuevos)
+  const sessionKey = `fidelia_popup_${popupBanner?.title || ''}`;
   useEffect(() => {
-    if (popupBanner && popupBanner.isActive && currentRole === 'client') {
+    if (popupBanner?.isActive && popupBanner.title && currentRole === 'client') {
+      if (popupBanner.showOncePerSession !== false && sessionStorage.getItem(sessionKey)) return;
       setIsOpen(true);
     }
-  }, [popupBanner, currentRole]);
+  }, [popupBanner?.isActive, popupBanner?.title, currentRole]);
 
   if (!isOpen || !popupBanner || !popupBanner.isActive || currentRole !== 'client') return null;
 
   const handleClose = () => {
     setIsOpen(false);
+    try {
+      sessionStorage.setItem(sessionKey, '1');
+    } catch {
+      /* sin almacenamiento */
+    }
   };
 
   const handleCtaClick = () => {

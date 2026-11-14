@@ -1,8 +1,88 @@
 rules_version = '2';
+// Fidelia · multi-comercio
+// Los navegadores SOLO leen. Todas las escrituras pasan por el servidor (/api/fidelia),
+// que valida permisos y hace las operaciones de puntos de forma atómica.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function isPlatformAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+    }
+    function isStaff(storeId) {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/stores/$(storeId)/staff/$(myEmail()));
+    }
+    function canManage(storeId) { return isStaff(storeId) || isPlatformAdmin(); }
+
+    // Creador de la plataforma: se da de alta a mano desde la consola de Firebase
+    match /platformAdmins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Índice de a qué comercios pertenece cada email del equipo
+    match /staffIndex/{email} {
+      allow read: if signedIn() && request.auth.token.email_verified == true && myEmail() == email;
+      allow write: if false;
+    }
+
+    match /stores/{storeId} {
+      // Perfil público del comercio (nombre, logo, colores, sucursales, niveles). No tiene datos secretos.
+      allow get: if true;
+      allow list: if isPlatformAdmin();
+      allow write: if false;
+
+      // Catálogo de premios: público
+      match /rewards/{id} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // Encuestas y sorteos: visibles para quien inició sesión
+      match /surveys/{id} {
+        allow read: if signedIn();
+        allow write: if false;
+        match /responses/{uid} {
+          allow read: if canManage(storeId) || (signedIn() && request.auth.uid == uid);
+          allow write: if false;
+        }
+      }
+      match /raffles/{id} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
+
+      // Cada cliente ve solo lo suyo; el equipo del comercio ve todo
+      match /customers/{uid} {
+        allow read: if canManage(storeId) || (signedIn() && request.auth.uid == uid);
+        allow write: if false;
+      }
+      match /movements/{id} {
+        allow read: if canManage(storeId) || (signedIn() && resource.data.customerId == request.auth.uid);
+        allow write: if false;
+      }
+      match /vouchers/{id} {
+        allow read: if canManage(storeId) || (signedIn() && resource.data.customerId == request.auth.uid);
+        allow write: if false;
+      }
+
+      // Solo el equipo
+      match /staff/{email} {
+        allow read: if canManage(storeId);
+        allow write: if false;
+      }
+      match /qrcodes/{code} {
+        allow read: if canManage(storeId);
+        allow write: if false;
+      }
+    }
+
+    // Todo lo demás (incluidas las colecciones viejas de la demo) queda cerrado
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

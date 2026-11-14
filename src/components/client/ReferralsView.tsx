@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { useLoyalty } from '../../context/LoyaltyContext';
+import { storeUrl } from '../../lib/route';
 import { UserPlus, Share2, Copy, Check, QrCode, Sparkles, MessageCircle } from 'lucide-react';
 
 export const ReferralsView: React.FC = () => {
-  const { currentCustomer, storeSettings } = useLoyalty();
+  const { currentCustomer, storeSettings, storeId } = useLoyalty();
   const [copied, setCopied] = useState(false);
 
   if (!currentCustomer) return null;
 
-  const referralUrl = `${window.location.origin}/?ref=${currentCustomer.referralCode}`;
+  const referralUrl = `${storeUrl(storeId || '')}?ref=${currentCustomer.referralCode}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(referralUrl);
@@ -34,10 +35,10 @@ export const ReferralsView: React.FC = () => {
             <span>Programa de Referidos</span>
           </span>
           <h1 className="text-2xl sm:text-3xl font-black">
-            Invitá a tus amigos y ¡ganá 500 puntos!
+            Invitá a tus amigos y ¡ganá {(storeSettings.referralPoints || 0).toLocaleString('es-AR')} puntos!
           </h1>
           <p className="text-xs sm:text-sm text-sky-100 max-w-md">
-            Compartí tu enlace o código con tus amigos. Cuando se registren y realicen su primera compra, vos y tu amigo ganan puntos extra.
+            Compartí tu enlace o código con tus amigos. Cuando se registren con tu código y hagan su primera compra, vos y tu amigo ganan puntos extra.
           </p>
         </div>
 

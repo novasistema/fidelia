@@ -23,18 +23,31 @@ export const AdminBonuses: React.FC = () => {
     { id: 6, name: 'Sáb' }
   ];
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const safe = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+      return true;
+    } catch (err: any) {
+      alert(err?.message || 'No se pudo guardar.');
+      return false;
+    }
+  };
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title) return;
 
-    addBonusRule({
-      title,
-      description,
-      multiplier,
-      extraPoints,
-      daysOfWeek: selectedDays,
-      isActive: true
-    });
+    const ok = await safe(() =>
+      addBonusRule({
+        title,
+        description,
+        multiplier,
+        extraPoints,
+        daysOfWeek: selectedDays,
+        isActive: true
+      })
+    );
+    if (!ok) return;
 
     setTitle('');
     setDescription('');
@@ -102,14 +115,14 @@ export const AdminBonuses: React.FC = () => {
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => toggleBonusRule(rule.id)}
+                onClick={() => safe(() => toggleBonusRule(rule.id))}
                 className="p-2 text-slate-600 hover:text-sky-600 transition"
               >
                 {rule.isActive ? <ToggleRight className="w-8 h-8 text-sky-600" /> : <ToggleLeft className="w-8 h-8 text-slate-400" />}
               </button>
 
               <button
-                onClick={() => deleteBonusRule(rule.id)}
+                onClick={() => window.confirm('¿Eliminar esta promoción?') && safe(() => deleteBonusRule(rule.id))}
                 className="p-2 text-slate-400 hover:text-rose-600 transition"
               >
                 <Trash2 className="w-4 h-4" />

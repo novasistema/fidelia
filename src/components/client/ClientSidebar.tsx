@@ -33,11 +33,11 @@ export const ClientSidebar: React.FC<ClientSidebarProps> = ({
   isOpen = false,
   onClose = () => {}
 }) => {
-  const { currentCustomer, setCurrentCustomer, storeSettings, setCurrentRole, tiers } = useLoyalty();
+  const { currentCustomer, storeSettings, tierOf, logout } = useLoyalty();
 
   if (!currentCustomer) return null;
 
-  const currentTier = tiers.find(t => t.id === currentCustomer.tierId) || tiers[0];
+  const currentTier = tierOf(currentCustomer);
   const currentNav = activeView || activeSection || 'catalog';
   const handleSelectNav = setActiveView || setActiveSection || (() => {});
 
@@ -97,7 +97,7 @@ export const ClientSidebar: React.FC<ClientSidebarProps> = ({
 
           {/* Logout Customer button */}
           <button
-            onClick={() => setCurrentCustomer(null)}
+            onClick={() => logout()}
             className="w-full mt-3 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition border border-slate-200"
           >
             <LogOut className="w-3.5 h-3.5 text-slate-500" />

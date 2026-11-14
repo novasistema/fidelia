@@ -4,8 +4,9 @@ import { RewardItem } from '../../types';
 import { Search, Zap, Gift, Check, X, Sparkles, AlertCircle, ShoppingBag, ArrowRight } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-export const CatalogView: React.FC<{ onNavigateToSection: (sec: string) => void }> = ({ onNavigateToSection }) => {
-  const { currentCustomer, rewards, redeemReward, tiers, storeSettings } = useLoyalty();
+export const CatalogView: React.FC<{ onNavigateToSection?: (sec: string) => void }> = ({ onNavigateToSection = () => {} }) => {
+  const { currentCustomer, rewards, redeemReward, tiers, storeSettings, tierOf } = useLoyalty();
+  const [redeeming, setRedeeming] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
@@ -14,9 +15,10 @@ export const CatalogView: React.FC<{ onNavigateToSection: (sec: string) => void 
 
   if (!currentCustomer) return null;
 
-  const currentTier = tiers.find(t => t.id === currentCustomer.tierId) || tiers[0];
-  const nextTier = tiers.find(t => t.minPoints > currentCustomer.points) || tiers[tiers.length - 1];
-  const pointsToNextTier = nextTier ? Math.max(0, nextTier.minPoints - currentCustomer.points) : 0;
+  const currentTier = tierOf(currentCustomer);
+  const earned = currentCustomer.totalEarned ?? currentCustomer.points;
+  const nextTier = tiers.find(t => t.minPoints > earned) || tiers[tiers.length - 1];
+  const pointsToNextTier = nextTier ? Math.max(0, nextTier.minPoints - earned) : 0;
 
   // Extract unique categories
   const categories = ['Todos', ...Array.from(new Set(rewards.map(r => r.category)))];
@@ -30,10 +32,12 @@ export const CatalogView: React.FC<{ onNavigateToSection: (sec: string) => void 
     return matchesSearch && matchesCat;
   });
 
-  const handleConfirmRedemption = () => {
-    if (!selectedReward) return;
+  const handleConfirmRedemption = async () => {
+    if (!selectedReward || redeeming) return;
 
-    const res = redeemReward(selectedReward.id);
+    setRedeeming(true);
+    const res = await redeemReward(selectedReward.id);
+    setRedeeming(false);
     if (res.success && res.voucher) {
       // Trigger confetti celebration!
       confetti({
@@ -187,7 +191,7 @@ export const CatalogView: React.FC<{ onNavigateToSection: (sec: string) => void 
                 {/* Reward Image */}
                 <div className="relative h-48 bg-slate-100 overflow-hidden">
                   <img
-                    src={reward.imageUrl}
+                    src={reward.imageUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(reward.title)}`}
                     alt={reward.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
@@ -302,9 +306,10 @@ export const CatalogView: React.FC<{ onNavigateToSection: (sec: string) => void 
                   </button>
                   <button
                     onClick={handleConfirmRedemption}
-                    className="flex-1 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl shadow-lg shadow-sky-500/25 transition text-sm"
+                    disabled={redeeming}
+                    className="disabled:opacity-50 flex-1 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl shadow-lg shadow-sky-500/25 transition text-sm"
                   >
-                    Canjear
+                    {redeeming ? 'Canjeando...' : 'Canjear'}
                   </button>
                 </div>
               </div>

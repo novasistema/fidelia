@@ -13,7 +13,9 @@ import {
   Award,
   Settings,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  ExternalLink,
+  UserCog
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -22,29 +24,17 @@ interface AdminSidebarProps {
 }
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({ activeView, setActiveView }) => {
-  const { storeSettings, setCurrentRole } = useLoyalty();
-
-  const navItems = [
-    { id: 'dashboard', label: 'Panel Principal', icon: BarChart3 },
-    { id: 'points', label: 'Sumar / Validar Puntos', icon: Zap },
-    { id: 'popup', label: 'Pop-up Publicitario', icon: Megaphone },
-    { id: 'customers', label: 'Clientes Registrados', icon: Users },
-    { id: 'catalog', label: 'Catálogo de Premios', icon: Gift },
-    { id: 'bonuses', label: 'Reglas & Bonificaciones', icon: Sparkles },
-    { id: 'surveys', label: 'Encuestas', icon: ClipboardList },
-    { id: 'raffles', label: 'Sorteos', icon: Trophy },
-    { id: 'tiers', label: 'Niveles & Escalas', icon: Award },
-    { id: 'settings', label: 'Configuración & QR', icon: Settings }
-  ];
+  const { storeId, staffRole, logout } = useLoyalty();
+  const navItems = adminNavItems(staffRole);
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between p-4 flex-shrink-0 min-h-screen">
+    <aside className="hidden md:flex w-64 bg-slate-900 text-slate-300 flex-col justify-between p-4 flex-shrink-0 min-h-screen">
       <div className="space-y-6">
         {/* Brand Header */}
         <div className="px-2 pt-2 text-center bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
           <BrandLogo size="sm" showTagline />
           <span className="inline-block mt-2 text-[10px] font-bold text-sky-400 bg-sky-950/80 px-2 py-0.5 rounded-full border border-sky-800">
-            Panel Administrador
+            {staffRole === 'owner' ? 'Panel del Dueño' : 'Panel de Caja'}
           </span>
         </div>
 
@@ -75,16 +65,44 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ activeView, setActiv
         </nav>
       </div>
 
-      {/* Switch back to Client */}
-      <div className="pt-4 border-t border-slate-800/80">
+      <div className="pt-4 border-t border-slate-800/80 space-y-2">
+        {storeId && (
+          <a
+            href={`/c/${storeId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-2xl transition flex items-center justify-center space-x-2"
+          >
+            <ExternalLink className="w-4 h-4 text-sky-400" />
+            <span>Ver App de Clientes</span>
+          </a>
+        )}
         <button
-          onClick={() => setCurrentRole('client')}
-          className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-2xl transition flex items-center justify-center space-x-2"
+          onClick={() => logout()}
+          className="w-full py-2.5 px-3 bg-slate-950 hover:bg-slate-800 text-slate-400 font-bold text-xs rounded-2xl transition flex items-center justify-center space-x-2"
         >
-          <LogOut className="w-4 h-4 text-sky-400" />
-          <span>Ver App como Cliente</span>
+          <LogOut className="w-4 h-4" />
+          <span>Cerrar sesión</span>
         </button>
       </div>
     </aside>
   );
+};
+
+export const adminNavItems = (role: 'owner' | 'cashier' | null) => {
+  const all = [
+    { id: 'dashboard', label: 'Panel Principal', icon: BarChart3 },
+    { id: 'points', label: 'Sumar / Validar Puntos', icon: Zap },
+    { id: 'popup', label: 'Pop-up Publicitario', icon: Megaphone },
+    { id: 'customers', label: 'Clientes Registrados', icon: Users },
+    { id: 'catalog', label: 'Catálogo de Premios', icon: Gift },
+    { id: 'bonuses', label: 'Reglas & Bonificaciones', icon: Sparkles },
+    { id: 'surveys', label: 'Encuestas', icon: ClipboardList },
+    { id: 'raffles', label: 'Sorteos', icon: Trophy },
+    { id: 'tiers', label: 'Niveles & Escalas', icon: Award },
+    { id: 'team', label: 'Equipo y Cajeros', icon: UserCog },
+    { id: 'settings', label: 'Configuración & QR', icon: Settings }
+  ];
+  const cashierViews = ['dashboard', 'points', 'customers'];
+  return role === 'owner' ? all : all.filter(i => cashierViews.includes(i.id));
 };

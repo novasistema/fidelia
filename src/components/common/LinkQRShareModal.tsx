@@ -1,157 +1,94 @@
 import React, { useState } from 'react';
 import { useLoyalty } from '../../context/LoyaltyContext';
-import { X, Copy, Check, QrCode, ExternalLink, Smartphone, ShieldCheck, User } from 'lucide-react';
+import { X, Copy, Check, QrCode, ExternalLink, Smartphone, Printer, Shield } from 'lucide-react';
+import { storeUrl } from '../../lib/route';
 
+const qrImg = (url: string, size = 220) => `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=8&data=${encodeURIComponent(url)}`;
+
+// Link y QR del comercio para que los clientes se sumen (para imprimir en el mostrador)
 export const LinkQRShareModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const { storeSettings, currentCustomer, customers, setCurrentCustomer, setCurrentRole } = useLoyalty();
-  const [copiedType, setCopiedType] = useState<'client' | 'admin' | null>(null);
+  const { storeSettings, storeId } = useLoyalty();
+  const [copied, setCopied] = useState<'client' | 'admin' | null>(null);
+  if (!storeId) return null;
 
-  const clientUrl = `${window.location.origin}/?role=client`;
-  const adminUrl = `${window.location.origin}/?role=admin`;
+  const clientUrl = storeUrl(storeId);
+  const adminUrl = `${window.location.origin}/admin`;
 
-  const copyToClipboard = (text: string, type: 'client' | 'admin') => {
+  const copy = (text: string, type: 'client' | 'admin') => {
     navigator.clipboard.writeText(text);
-    setCopiedType(type);
-    setTimeout(() => setCopiedType(null), 2000);
+    setCopied(type);
+    setTimeout(() => setCopied(null), 2000);
   };
 
-  // Generate simple QR code SVG or QuickChart QR API image URL
-  const getQrUrl = (url: string) => 
-    `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+  const printPoster = () => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+    const esc = (t: string) => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>QR ${esc(storeSettings.name)}</title>
+      <style>body{font-family:system-ui,sans-serif;text-align:center;padding:40px;color:#0f172a}h1{font-size:34px;margin:0 0 8px}p{font-size:18px;margin:6px 0}img.qr{width:360px;height:360px;margin:24px auto;display:block}.url{font-family:monospace;font-size:14px;color:#475569}</style>
+      </head><body>
+      ${storeSettings.logoUrl ? `<img src="${esc(storeSettings.logoUrl)}" style="max-height:90px;margin-bottom:12px">` : ''}
+      <h1>¡Sumá puntos en ${esc(storeSettings.name)}!</h1>
+      <p>Escaneá el código, registrate en 1 minuto y ganá ${storeSettings.welcomePoints || 0} puntos de regalo.</p>
+      <img class="qr" src="${qrImg(clientUrl, 600)}" onload="setTimeout(()=>window.print(),300)">
+      <p class="url">${esc(clientUrl)}</p>
+      </body></html>`);
+    w.document.close();
+  };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100" onClick={e => e.stopPropagation()}>
         <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <QrCode className="w-5 h-5 text-sky-400" />
-            <h2 className="font-bold text-lg">Acceso y Enlaces QR del Comercio</h2>
+            <h2 className="font-bold text-lg">Link y QR de {storeSettings.name}</h2>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
-          >
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-          {/* Client access QR */}
-          <div className="p-4 bg-sky-50 rounded-xl border border-sky-100 flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-5">
+        <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+          <div className="p-4 bg-sky-50 rounded-xl border border-sky-100 flex flex-col md:flex-row items-center gap-5">
             <div className="p-2 bg-white rounded-xl shadow-md border border-slate-100 flex-shrink-0">
-              <img 
-                src={getQrUrl(clientUrl)} 
-                alt="QR Cliente" 
-                className="w-28 h-28 object-contain"
-              />
+              <img src={qrImg(clientUrl)} alt="QR para clientes" className="w-32 h-32 object-contain" />
             </div>
             <div className="flex-1 text-center md:text-left space-y-2">
               <div className="flex items-center justify-center md:justify-start space-x-1.5 text-sky-900 font-bold text-base">
                 <Smartphone className="w-4 h-4 text-sky-600" />
-                <span>Acceso para Clientes</span>
+                <span>Para tus clientes</span>
               </div>
-              <p className="text-xs text-sky-800">
-                Escaneá este QR para ingresar al portal de fidelización del cliente, registrarse o canjear sus puntos acumulados.
-              </p>
+              <p className="text-xs text-sky-800">Pegalo en el mostrador o compartilo por WhatsApp e Instagram. Los clientes se registran, ven sus puntos y canjean premios.</p>
+              <code className="block text-[11px] text-slate-600 break-all">{clientUrl}</code>
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 pt-1">
-                <button
-                  onClick={() => copyToClipboard(clientUrl, 'client')}
-                  className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-1 shadow-sm transition"
-                >
-                  {copiedType === 'client' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedType === 'client' ? '¡Copiado!' : 'Copiar Link Cliente'}</span>
+                <button onClick={() => copy(clientUrl, 'client')} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-1">
+                  {copied === 'client' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copied === 'client' ? '¡Copiado!' : 'Copiar link'}</span>
                 </button>
-                <button
-                  onClick={() => {
-                    setCurrentRole('client');
-                    onClose();
-                  }}
-                  className="px-3 py-1.5 bg-white hover:bg-slate-50 text-sky-700 border border-sky-200 text-xs font-semibold rounded-lg flex items-center space-x-1 shadow-sm transition"
-                >
+                <button onClick={printPoster} className="px-3 py-1.5 bg-white hover:bg-slate-50 text-sky-700 border border-sky-200 text-xs font-semibold rounded-lg flex items-center space-x-1">
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Imprimir cartel</span>
+                </button>
+                <a href={clientUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-white hover:bg-slate-50 text-sky-700 border border-sky-200 text-xs font-semibold rounded-lg flex items-center space-x-1">
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Ingresar como Cliente</span>
-                </button>
+                  <span>Abrir</span>
+                </a>
               </div>
             </div>
           </div>
 
-          {/* Admin access QR */}
-          <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-5">
-            <div className="p-2 bg-white rounded-xl shadow-md border border-slate-100 flex-shrink-0">
-              <img 
-                src={getQrUrl(adminUrl)} 
-                alt="QR Administrador" 
-                className="w-28 h-28 object-contain"
-              />
+          <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 space-y-2">
+            <div className="flex items-center space-x-1.5 text-indigo-900 font-bold text-sm">
+              <Shield className="w-4 h-4 text-indigo-600" />
+              <span>Panel del comercio (dueño y cajeros)</span>
             </div>
-            <div className="flex-1 text-center md:text-left space-y-2">
-              <div className="flex items-center justify-center md:justify-start space-x-1.5 text-indigo-900 font-bold text-base">
-                <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                <span>Panel de Administración (Dueño)</span>
-              </div>
-              <p className="text-xs text-indigo-800">
-                Acceso exclusivo para el administrador del comercio: cargar puntos, crear publicidad pop-up, configurar premios y estadísticas.
-              </p>
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 pt-1">
-                <button
-                  onClick={() => copyToClipboard(adminUrl, 'admin')}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-1 shadow-sm transition"
-                >
-                  {copiedType === 'admin' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedType === 'admin' ? '¡Copiado!' : 'Copiar Link Admin'}</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentRole('admin');
-                    onClose();
-                  }}
-                  className="px-3 py-1.5 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 text-xs font-semibold rounded-lg flex items-center space-x-1 shadow-sm transition"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Ingresar como Administrador</span>
-                </button>
-              </div>
-            </div>
+            <p className="text-xs text-indigo-800">Cada persona entra con su propio email. Agregá cajeros en “Equipo y Cajeros”.</p>
+            <button onClick={() => copy(adminUrl, 'admin')} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg inline-flex items-center space-x-1">
+              {copied === 'admin' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied === 'admin' ? '¡Copiado!' : adminUrl}</span>
+            </button>
           </div>
-
-          {/* Switch Customer selector */}
-          <div className="pt-2 border-t border-slate-100">
-            <label className="text-xs font-semibold text-slate-700 block mb-2">
-              Simular inicio de sesión como otro cliente de prueba:
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {customers.map(cust => (
-                <button
-                  key={cust.id}
-                  onClick={() => {
-                    setCurrentCustomer(cust);
-                    setCurrentRole('client');
-                    onClose();
-                  }}
-                  className={`p-2 rounded-lg border text-left text-xs transition flex items-center space-x-2 ${
-                    currentCustomer?.id === cust.id
-                      ? 'border-sky-500 bg-sky-50/80 font-bold text-sky-900'
-                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <User className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                  <div className="truncate">
-                    <div>{cust.name} {cust.lastName}</div>
-                    <div className="text-[10px] text-slate-500 font-normal">⚡ {cust.points} pts - Nivel {cust.tierId.toUpperCase()}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-semibold transition"
-          >
-            Cerrar
-          </button>
         </div>
       </div>
     </div>

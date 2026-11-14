@@ -9,24 +9,39 @@ export const AdminCatalog: React.FC = () => {
   const [editingReward, setEditingReward] = useState<Partial<RewardItem> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  const handleSaveReward = (e: React.FormEvent) => {
+  const [saving, setSaving] = useState(false);
+
+  const safe = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+      return true;
+    } catch (err: any) {
+      alert(err?.message || 'No se pudo guardar.');
+      return false;
+    }
+  };
+
+  const handleSaveReward = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingReward) return;
 
-    if (editingReward.id) {
-      updateReward(editingReward.id, editingReward);
-    } else {
-      addReward({
-        title: editingReward.title || 'Nuevo Premio',
-        category: editingReward.category || 'Gastronomía',
-        description: editingReward.description || '',
-        pointsCost: editingReward.pointsCost || 100,
-        imageUrl: editingReward.imageUrl || 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=600&auto=format&fit=crop&q=80',
-        stock: editingReward.stock || 50,
-        isActive: editingReward.isActive !== undefined ? editingReward.isActive : true,
-        terms: editingReward.terms || ''
-      });
-    }
+    setSaving(true);
+    const ok = await safe(() =>
+      editingReward.id
+        ? updateReward(editingReward.id, editingReward)
+        : addReward({
+            title: editingReward.title || 'Nuevo Premio',
+            category: editingReward.category || 'General',
+            description: editingReward.description || '',
+            pointsCost: editingReward.pointsCost || 100,
+            imageUrl: editingReward.imageUrl || '',
+            stock: editingReward.stock ?? 50,
+            isActive: editingReward.isActive !== undefined ? editingReward.isActive : true,
+            terms: editingReward.terms || ''
+          })
+    );
+    setSaving(false);
+    if (!ok) return;
 
     setEditingReward(null);
     setIsCreating(false);
@@ -78,7 +93,7 @@ export const AdminCatalog: React.FC = () => {
           >
             <div>
               <div className="relative h-44 bg-slate-100">
-                <img src={reward.imageUrl} alt={reward.title} className="w-full h-full object-cover" />
+                <img src={reward.imageUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(reward.title)}`} alt={reward.title} className="w-full h-full object-cover" />
                 <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[10px] font-extrabold text-slate-700 uppercase">
                   {reward.category}
                 </div>
@@ -102,7 +117,7 @@ export const AdminCatalog: React.FC = () => {
 
             <div className="p-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-2">
               <button
-                onClick={() => updateReward(reward.id, { isActive: !reward.isActive })}
+                onClick={() => safe(() => updateReward(reward.id, { isActive: !reward.isActive }))}
                 className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${
                   reward.isActive ? 'bg-amber-50 text-amber-800 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                 }`}
@@ -121,7 +136,7 @@ export const AdminCatalog: React.FC = () => {
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => deleteReward(reward.id)}
+                  onClick={() => window.confirm(`¿Eliminar "${reward.title}" del catálogo?`) && safe(() => deleteReward(reward.id))}
                   className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
                 >
                   <Trash2 className="w-4 h-4" />

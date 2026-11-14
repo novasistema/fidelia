@@ -15,16 +15,20 @@ export interface CustomerUser {
   createdAt: string;
   referralCode: string;
   referredBy?: string;
+  referralRewarded?: boolean;
+  totalEarned?: number; // puntos ganados en toda la historia (define el nivel)
   avatarUrl?: string;
 }
 
 export interface StoreSettings {
+  id?: string;
   name: string;
   brandName: string;
   logoUrl?: string;
   primaryColor: string;
   pointsPerPeso: number; // e.g. 1 point for every $100 spent
   welcomePoints?: number;
+  referralPoints?: number;
   currencySymbol: string;
   whatsappNumber?: string;
   contactEmail?: string;
@@ -33,12 +37,16 @@ export interface StoreSettings {
   websiteUrl?: string;
   poweredByText?: string;
   poweredByUrl?: string;
-  ownerPin?: string;
-  creatorPin?: string;
   isSystemActive?: boolean;
   suspensionReason?: string;
   subscriptionDueDate?: string;
   clientPlanName?: string;
+  monthlyFee?: number;
+  branches?: Branch[];
+  bonusRules?: BonusRule[];
+  tiers?: TierLevel[];
+  popupBanner?: PopupBanner;
+  createdAt?: string;
 }
 
 export interface Branch {
@@ -75,6 +83,8 @@ export interface RedemptionVoucher {
   createdAt: string;
   status: 'pending' | 'used' | 'cancelled';
   usedAt?: string;
+  usedBy?: string;
+  createdAtIso?: string;
 }
 
 export interface PointMovement {
@@ -85,7 +95,10 @@ export interface PointMovement {
   points: number; // positive for earned, negative for spent
   description: string;
   date: string;
+  createdAt?: string;
   amountPeso?: number;
+  detail?: string;
+  staffEmail?: string;
 }
 
 export interface PopupBanner {
@@ -140,6 +153,21 @@ export interface Raffle {
   winnerCustomerId?: string;
   isActive: boolean;
   participants: { customerId: string; customerName: string; entries: number; date: string }[];
+  drawnAt?: string;
+}
+
+export interface StaffMember {
+  email: string;
+  role: 'owner' | 'cashier';
+  name?: string;
+  addedAt?: string;
+}
+
+export interface StaffStore {
+  storeId: string;
+  role: 'owner' | 'cashier';
+  name: string;
+  isSystemActive: boolean;
 }
 
 export interface TierLevel {
