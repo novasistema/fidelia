@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Mail, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Mail, ArrowRight, CheckCircle2, User, Lock } from 'lucide-react';
+import { queryParam } from '../../lib/route';
 import { useLoyalty } from '../../context/LoyaltyContext';
-import { loginWithGoogle, sendEmailLoginLink, finishEmailLink, authErrorMessage } from '../../lib/firebase';
+import { loginWithGoogle, sendEmailLoginLink, finishEmailLink, authErrorMessage, loginWithUserPassword } from '../../lib/firebase';
 
 const GoogleIcon = () => (
   <svg viewBox="0 0 48 48" className="w-5 h-5" aria-hidden="true">
@@ -13,8 +14,12 @@ const GoogleIcon = () => (
 );
 
 // Ingreso sin contraseña: Google o link por email
-export const AuthPanel: React.FC<{ title?: string; subtitle?: string }> = ({ title, subtitle }) => {
+export const AuthPanel: React.FC<{ title?: string; subtitle?: string; allowUserPassword?: boolean }> = ({ title, subtitle, allowUserPassword }) => {
   const { emailLinkNeedsEmail, setEmailLinkNeedsEmail } = useLoyalty();
+  const demoFromLink = queryParam('demo') === '1';
+  const [showUserPass, setShowUserPass] = useState(!!allowUserPassword && demoFromLink);
+  const [userName, setUserName] = useState(demoFromLink ? 'demo' : '');
+  const [password, setPassword] = useState(demoFromLink ? 'demo' : '');
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,6 +60,48 @@ export const AuthPanel: React.FC<{ title?: string; subtitle?: string }> = ({ tit
       setBusy(false);
     }
   };
+
+  const userPassLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      await loginWithUserPassword(userName, password);
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (showUserPass) {
+    const inp = 'w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500';
+    return (
+      <form onSubmit={userPassLogin} className="space-y-3">
+        {(title || subtitle) && (
+          <div className="text-center">
+            {title && <h3 className="font-extrabold text-slate-800 text-lg">{title}</h3>}
+            <p className="text-xs text-slate-500 mt-1">Ingresá con usuario y contraseña.</p>
+          </div>
+        )}
+        {error && <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-100 font-medium">{error}</div>}
+        <div className="relative">
+          <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={userName} onChange={e => setUserName(e.target.value)} placeholder="Usuario" autoCapitalize="none" autoComplete="username" className={inp} />
+        </div>
+        <div className="relative">
+          <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña" autoComplete="current-password" className={inp} />
+        </div>
+        <button type="submit" disabled={busy} className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white font-bold rounded-xl text-sm">
+          {busy ? 'Entrando...' : 'Entrar'}
+        </button>
+        <button type="button" onClick={() => setShowUserPass(false)} className="w-full text-xs font-bold text-slate-500 hover:text-slate-800">
+          Volver a Google / email
+        </button>
+      </form>
+    );
+  }
 
   if (sent) {
     return (
@@ -129,6 +176,12 @@ export const AuthPanel: React.FC<{ title?: string; subtitle?: string }> = ({ tit
         </button>
         {!emailLinkNeedsEmail && <p className="text-[11px] text-slate-400 text-center">Sin contraseñas: te llega un link por email y entrás con un toque.</p>}
       </form>
+
+      {allowUserPassword && !emailLinkNeedsEmail && (
+        <button onClick={() => setShowUserPass(true)} className="w-full text-xs font-bold text-sky-600 hover:underline">
+          Entrar con usuario y contraseña
+        </button>
+      )}
     </div>
   );
 };

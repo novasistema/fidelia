@@ -136,10 +136,107 @@ const loadStore = async (tx: Tx, storeId: string, isAdmin = false) => {
 
 const isPlatformAdmin = async (tx: Tx, ctx: Ctx) => !!(await tx.get(`platformAdmins/${ctx.uid}`));
 
+// ---------- Cuenta de demostración (usuario "demo" / contraseña "demo") ----------
+// Solo puede entrar al comercio "demo", que se arma solo con datos de ejemplo.
+export const DEMO_EMAIL = 'demo@fidelia.demo';
+export const DEMO_STORE = 'demo';
+const isDemo = (ctx: Ctx) => ctx.email === DEMO_EMAIL;
+
+const IMG = (id: string) => `https://images.unsplash.com/${id}?w=600&auto=format&fit=crop&q=80`;
+
+export const seedDemoStore = (tx: Tx) => {
+  const store = {
+    ...newStoreDoc(DEMO_STORE, 'Comercio Demo', 'Plan Demo', '2099-12-31'),
+    brandName: 'Club Demo',
+    pointsPerPeso: 0.01,
+    welcomePoints: 100,
+    referralPoints: 300,
+    whatsappNumber: '',
+    address: 'Av. Siempre Viva 742',
+    branches: [{ id: 'b1', name: 'Casa Central', address: 'Av. Siempre Viva 742', city: 'Córdoba', phone: '', hours: 'Lunes a sábado de 8 a 20 hs', isMain: true }],
+    bonusRules: [
+      { id: 'br1', title: 'LUNES DE PUNTOS DOBLES', description: 'Todas las compras de los lunes suman el doble', multiplier: 2, extraPoints: 0, daysOfWeek: [1], isActive: true },
+      { id: 'br2', title: '+50 PUNTOS EN COMPRAS GRANDES', description: '50 puntos extra en compras desde $50.000', multiplier: 1, extraPoints: 50, daysOfWeek: [1, 2, 3, 4, 5, 6], isActive: true, minPurchaseAmount: 50000 }
+    ],
+    popupBanner: { id: 'pop', title: '¡Bienvenido al Club Demo!', description: 'Sumá puntos en cada compra y canjealos por premios. Esta es una demostración de Fidelia.', imageUrl: IMG('photo-1556742049-0a67d1656819'), ctaText: 'Ver premios', ctaAction: 'catalog', ctaLink: '', isActive: true, showOncePerSession: true },
+    isDemo: true
+  };
+  tx.set(S(DEMO_STORE), store);
+  tx.set(`${S(DEMO_STORE)}/staff/${DEMO_EMAIL}`, { email: DEMO_EMAIL, role: 'owner', name: 'Usuario Demo', addedBy: 'sistema', addedAt: nowIso() });
+  tx.set(`staffIndex/${DEMO_EMAIL}`, { email: DEMO_EMAIL, stores: { [DEMO_STORE]: 'owner' } });
+
+  const rewards = [
+    { id: 'r1', title: 'Café + 2 medialunas', category: 'Gastronomía', pointsCost: 200, stock: 50, img: 'photo-1517256064527-09c73fc73e38', originalPrice: 3500 },
+    { id: 'r2', title: '10% de descuento', category: 'Descuentos', pointsCost: 300, stock: 99, img: 'photo-1607082348824-0a96f2a4b9da', originalPrice: 5000 },
+    { id: 'r3', title: 'Porción de torta', category: 'Gastronomía', pointsCost: 400, stock: 30, img: 'photo-1535141192574-5d4897c13136', originalPrice: 4000 },
+    { id: 'r4', title: 'Taza de cerámica', category: 'Regalos', pointsCost: 800, stock: 15, img: 'photo-1610701596007-11502861dcfa', originalPrice: 9000 },
+    { id: 'r5', title: '30% de descuento', category: 'Descuentos', pointsCost: 1500, stock: 20, img: 'photo-1607082348824-0a96f2a4b9da', originalPrice: 15000 }
+  ];
+  for (const r of rewards)
+    tx.set(`${S(DEMO_STORE)}/rewards/${r.id}`, {
+      id: r.id, title: r.title, category: r.category, description: `Canjealo en el mostrador presentando tu código.`, pointsCost: r.pointsCost,
+      imageUrl: IMG(r.img), stock: r.stock, isActive: true, terms: 'Válido en Casa Central.', originalPrice: r.originalPrice, updatedAt: nowIso()
+    });
+
+  const customers = [
+    { id: 'demo-c1', name: 'María', lastName: 'García', dni: '30111222', phone: '5493510000001', points: 1450, totalEarned: 2050, totalSpent: 205000 },
+    { id: 'demo-c2', name: 'Carlos', lastName: 'Gómez', dni: '28999888', phone: '5493510000002', points: 820, totalEarned: 820, totalSpent: 82000 },
+    { id: 'demo-c3', name: 'Laura', lastName: 'Martínez', dni: '35444555', phone: '5493510000003', points: 3600, totalEarned: 4400, totalSpent: 440000 },
+    { id: 'demo-c4', name: 'Jorge', lastName: 'López', dni: '25333444', phone: '5493510000004', points: 260, totalEarned: 260, totalSpent: 16000 }
+  ];
+  const day = (d: number) => new Date(Date.now() - d * 86400000);
+  const label = (d: Date) => new Intl.DateTimeFormat('es-AR', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d);
+  let n = 0;
+  for (const c of customers) {
+    const tier = tierFor(store.tiers, c.totalEarned);
+    tx.set(`${S(DEMO_STORE)}/customers/${c.id}`, {
+      ...c, email: `${c.name.toLowerCase()}@ejemplo.com`, birthDate: '', gender: '', tierId: tier.id, createdAt: day(60).toISOString().slice(0, 10), createdAtIso: day(60).toISOString(),
+      referralCode: `${c.name.toUpperCase().slice(0, 4)}${1000 + n}`, referredBy: '', referralRewarded: false, avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${c.name}%20${c.lastName}`
+    });
+    const movs = [
+      { d: 50, type: 'earned_bonus', points: 100, description: '¡Bono de bienvenida!' },
+      { d: 20, type: 'earned_purchase', points: c.totalEarned - 100, description: `Compra de $${((c.totalEarned - 100) * 100).toLocaleString('es-AR')}`, amountPeso: (c.totalEarned - 100) * 100 }
+    ];
+    if (c.points < c.totalEarned) movs.push({ d: 5, type: 'spent_redemption', points: c.points - c.totalEarned, description: 'Canje de premio: Taza de cerámica' } as any);
+    for (const m of movs) {
+      const id = `demo-m${++n}`;
+      tx.set(`${S(DEMO_STORE)}/movements/${id}`, { id, customerId: c.id, customerName: `${c.name} ${c.lastName}`, date: label(day(m.d)), createdAt: day(m.d).toISOString(), staffEmail: m.type === 'earned_purchase' ? DEMO_EMAIL : undefined, ...m, d: undefined });
+    }
+  }
+  tx.set(`${S(DEMO_STORE)}/vouchers/demo-v1`, {
+    id: 'demo-v1', code: 'CANJE-DEMO01', customerId: 'demo-c1', customerName: 'María García', rewardId: 'r1', rewardTitle: 'Café + 2 medialunas', pointsSpent: 200,
+    createdAt: label(day(1)), createdAtIso: day(1).toISOString(), status: 'pending'
+  });
+  tx.set(`${S(DEMO_STORE)}/raffles/demo-raf1`, {
+    id: 'demo-raf1', title: 'Sorteo de fin de mes', description: 'Ganate una orden de compra de $50.000.', imageUrl: IMG('photo-1513151233558-d860c5398176'),
+    entryCostPoints: 100, startDate: day(10).toISOString().slice(0, 10), endDate: new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10), isActive: true,
+    participants: [
+      { customerId: 'demo-c1', customerName: 'María García', entries: 3, date: label(day(3)) },
+      { customerId: 'demo-c3', customerName: 'Laura Martínez', entries: 5, date: label(day(2)) }
+    ],
+    createdAt: day(10).toISOString()
+  });
+  tx.set(`${S(DEMO_STORE)}/surveys/demo-s1`, {
+    id: 'demo-s1', title: '¿Cómo fue tu atención?', description: 'Respondé 3 preguntas y sumá 50 puntos.', rewardPoints: 50, isActive: true, completedCustomerIds: ['demo-c3'], createdAt: day(15).toISOString(),
+    questions: [
+      { id: 'q1', question: '¿Cómo calificarías la atención?', type: 'rating' },
+      { id: 'q2', question: '¿Qué te gustaría que agreguemos?', type: 'text' },
+      { id: 'q3', question: '¿Con qué frecuencia nos visitás?', type: 'multiple_choice', options: ['Varias veces por semana', 'Una vez por semana', 'Ocasionalmente'] }
+    ]
+  });
+};
+
+const ensureDemo = (db: DB) =>
+  db.run(async tx => {
+    if (await tx.get(S(DEMO_STORE))) return;
+    seedDemoStore(tx);
+  });
+
 const requireStaff = async (tx: Tx, ctx: Ctx, storeId: string, roles: ('owner' | 'cashier')[] = ['owner', 'cashier']) => {
   const admin = await isPlatformAdmin(tx, ctx);
   if (admin) return { role: 'owner' as const, admin: true };
-  if (!ctx.emailVerified) fail(403, 'Tu email no está verificado.');
+  if (isDemo(ctx) && storeId !== DEMO_STORE) fail(403, 'La cuenta demo solo puede usar el comercio de demostración.');
+  if (!ctx.emailVerified && !isDemo(ctx)) fail(403, 'Tu email no está verificado.');
   const staff = await tx.get(`${S(storeId)}/staff/${ctx.email}`);
   if (!staff || !roles.includes(staff.role)) fail(403, 'No tenés permiso para esta acción en este comercio.');
   return { role: staff.role as 'owner' | 'cashier', admin: false };
@@ -174,18 +271,30 @@ const pointsChange = (store: any, customer: any, delta: number, type: string, de
 // ---------- Acciones ----------
 type Handler = (db: DB, ctx: Ctx, b: any) => Promise<any>;
 
-const me: Handler = async (db, ctx) =>
-  db.run(async tx => {
+const me: Handler = async (db, ctx) => {
+  if (isDemo(ctx)) await ensureDemo(db);
+  return db.run(async tx => {
     const admin = await isPlatformAdmin(tx, ctx);
-    const idx = ctx.emailVerified ? await tx.get(`staffIndex/${ctx.email}`) : null;
+    const idx = ctx.emailVerified || isDemo(ctx) ? await tx.get(`staffIndex/${ctx.email}`) : null;
     const entries = Object.entries((idx?.stores || {}) as Record<string, string>);
     const stores = [];
     for (const [storeId, role] of entries) {
       const s = await tx.get(S(storeId));
       if (s) stores.push({ storeId, role, name: s.name, isSystemActive: s.isSystemActive !== false });
     }
-    return { isPlatformAdmin: admin, staffStores: stores };
+    return { isPlatformAdmin: admin, staffStores: stores, isDemo: isDemo(ctx) };
   });
+};
+
+// Vuelve el comercio demo a sus datos de ejemplo (lo usa el creador o la cuenta demo)
+const resetDemo: Handler = async (db, ctx) => {
+  const allowed = isDemo(ctx) || (await db.run(tx => isPlatformAdmin(tx, ctx)));
+  if (!allowed) fail(403, 'No tenés permiso.');
+  await db.run(async tx => {
+    seedDemoStore(tx);
+  });
+  return { ok: true };
+};
 
 // --- Clientes ---
 const registerCustomer: Handler = async (db, ctx, b) =>
@@ -663,6 +772,7 @@ const addStaff: Handler = async (db, ctx, b) =>
     const storeId = str(b.storeId, 40);
     await loadStore(tx, storeId, await isPlatformAdmin(tx, ctx));
     await requireStaff(tx, ctx, storeId, ['owner']);
+    if (isDemo(ctx)) fail(403, 'En la demo no se puede modificar el equipo.');
     const email = str(b.email, 120).toLowerCase();
     if (!EMAIL_RE.test(email)) fail(400, 'Email inválido.');
     const role = b.role === 'owner' ? 'owner' : 'cashier';
@@ -675,6 +785,7 @@ const removeStaff: Handler = async (db, ctx, b) =>
     const storeId = str(b.storeId, 40);
     await loadStore(tx, storeId, await isPlatformAdmin(tx, ctx));
     await requireStaff(tx, ctx, storeId, ['owner']);
+    if (isDemo(ctx)) fail(403, 'En la demo no se puede modificar el equipo.');
     const email = str(b.email, 120).toLowerCase();
     const staff = await tx.get(`${S(storeId)}/staff/${email}`);
     if (!staff) fail(404, 'Esa persona no está en el equipo.');
@@ -692,7 +803,7 @@ const removeStaff: Handler = async (db, ctx, b) =>
 const requirePlatformAdmin = async (tx: Tx, ctx: Ctx) => {
   if (!(await isPlatformAdmin(tx, ctx))) fail(403, 'Solo el creador de la plataforma puede hacer esto.');
 };
-const RESERVED = ['admin', 'creador', 'api', 'c', 'app', 'www', 'login'];
+const RESERVED = ['admin', 'creador', 'api', 'c', 'app', 'www', 'login', DEMO_STORE];
 
 const createStore: Handler = async (db, ctx, b) =>
   db.run(async tx => {
@@ -727,6 +838,7 @@ const updateSubscription: Handler = async (db, ctx, b) =>
 
 export const ACTIONS: Record<string, Handler> = {
   me,
+  resetDemo,
   registerCustomer,
   redeem,
   enterRaffle,

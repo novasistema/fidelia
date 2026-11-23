@@ -64,6 +64,8 @@ interface LoyaltyContextType {
   staffRole: 'owner' | 'cashier' | null;
   meLoaded: boolean;
   refreshMe: () => Promise<void>;
+  isDemoAccount: boolean;
+  resetDemo: () => Promise<void>;
 
   storeId: string | null;
   setStoreId: (id: string | null) => void;
@@ -148,6 +150,7 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [staffStores, setStaffStores] = useState<StaffStore[]>([]);
   const [meLoaded, setMeLoaded] = useState(false);
+  const [isDemoAccount, setIsDemoAccount] = useState(false);
 
   const [storeId, setStoreIdState] = useState<string | null>(() => {
     if (route.kind === 'store') return route.storeId;
@@ -187,9 +190,10 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return;
     }
     try {
-      const r = await callApi<{ isPlatformAdmin: boolean; staffStores: StaffStore[] }>('me');
+      const r = await callApi<{ isPlatformAdmin: boolean; staffStores: StaffStore[]; isDemo?: boolean }>('me');
       setIsPlatformAdmin(r.isPlatformAdmin);
       setStaffStores(r.staffStores);
+      setIsDemoAccount(!!r.isDemo);
     } catch (e) {
       console.warn('me:', e);
     } finally {
@@ -355,6 +359,7 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await fbLogout();
       setIsPlatformAdmin(false);
       setStaffStores([]);
+      setIsDemoAccount(false);
     },
     currentRole,
     isPlatformAdmin,
@@ -362,6 +367,8 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     staffRole,
     meLoaded,
     refreshMe,
+    isDemoAccount,
+    resetDemo: () => callApi('resetDemo').then(() => undefined),
 
     storeId,
     setStoreId,

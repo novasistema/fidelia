@@ -63,7 +63,11 @@ const Landing: React.FC = () => (
           <p className="text-slate-300">
             Fidelia es el club de puntos de tu comercio: tus clientes se registran con el celular, suman en cada compra y canjean premios. Vos lo manejás desde la caja.
           </p>
-          <a href="/admin" className="inline-block px-6 py-3 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black rounded-2xl">Entrar a mi panel</a>
+          <div className="flex flex-wrap gap-3">
+            <a href="/admin" className="inline-block px-6 py-3 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black rounded-2xl">Entrar a mi panel</a>
+            <a href="/admin?demo=1" className="inline-block px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-black rounded-2xl border border-white/20">Probar la demo</a>
+          </div>
+          <p className="text-xs text-slate-400">Demo: usuario <strong className="text-slate-200">demo</strong> · contraseña <strong className="text-slate-200">demo</strong></p>
         </div>
         <div className="grid grid-cols-2 gap-3">
           {[
@@ -191,7 +195,8 @@ const ClientApp: React.FC = () => {
 
 // ---------- Panel del comercio (/admin) ----------
 const AdminApp: React.FC = () => {
-  const { authReady, authUser, meLoaded, staffStores, isPlatformAdmin, storeId, setStoreId, storeLoaded, storeExists, storeSettings, staffRole, logout } = useLoyalty();
+  const { authReady, authUser, meLoaded, staffStores, isPlatformAdmin, storeId, setStoreId, storeLoaded, storeExists, storeSettings, staffRole, logout, isDemoAccount, resetDemo } = useLoyalty();
+  const [resetting, setResetting] = useState(false);
   const [adminView, setAdminView] = useState('dashboard');
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
@@ -205,7 +210,7 @@ const AdminApp: React.FC = () => {
     return (
       <CenteredCard>
         <div className="flex justify-center"><FideliaLogo size="md" variant="horizontal" /></div>
-        <AuthPanel title="Panel del comercio" subtitle="Entrá con el email que te habilitaron como dueño o cajero." />
+        <AuthPanel title="Panel del comercio" subtitle="Entrá con el email que te habilitaron como dueño o cajero." allowUserPassword />
       </CenteredCard>
     );
   if (!meLoaded) return <Loading />;
@@ -255,6 +260,30 @@ const AdminApp: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-800">
       {storeSettings.isSystemActive === false && (
         <div className="bg-rose-600 text-white text-xs font-bold text-center py-1.5">Comercio suspendido · lo estás viendo como creador</div>
+      )}
+      {isDemoAccount && (
+        <div className="bg-amber-400 text-slate-900 text-xs font-bold px-3 py-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <span>Estás en la DEMO de Fidelia · los datos son de ejemplo</span>
+          <a href="/c/demo" target="_blank" rel="noopener noreferrer" className="underline">Ver app de clientes</a>
+          <button
+            disabled={resetting}
+            onClick={async () => {
+              if (!window.confirm('¿Volver la demo a los datos de ejemplo?')) return;
+              setResetting(true);
+              try {
+                await resetDemo();
+              } catch (e: any) {
+                alert(e?.message || 'No se pudo restablecer.');
+              } finally {
+                setResetting(false);
+              }
+            }}
+            className="underline disabled:opacity-50"
+          >
+            {resetting ? 'Restableciendo...' : 'Restablecer datos'}
+          </button>
+          <button onClick={() => logout()} className="underline">Salir</button>
+        </div>
       )}
       <div className="flex-1 flex flex-col md:flex-row">
         <AdminSidebar activeView={adminView} setActiveView={setAdminView} />

@@ -185,6 +185,20 @@ const run = async () => {
   const pv = await call(cashier, 'addPurchase', { storeId: 'cafe-luna', customerId: 'beto-uid', amount: 1000 });
   ok(pv.movement.points === 200, `multiplicador del nivel configurado (dio ${pv.movement.points})`);
 
+  console.log('Cuenta demo');
+  const demo = user('demo-uid', 'demo@fidelia.demo', false);
+  const meDemo = await call(demo, 'me');
+  ok(meDemo.isDemo && meDemo.staffStores.length === 1 && meDemo.staffStores[0].storeId === 'demo', 'la demo ve solo su comercio');
+  ok(data.get('stores/demo/customers/demo-c3')?.tierId === 'oro', 'comercio demo con clientes de ejemplo');
+  const pdemo = await call(demo, 'addPurchase', { storeId: 'demo', customerId: 'demo-c2', amount: 10000 });
+  ok(pdemo.movement.points >= 100, 'la demo carga compras aunque el email no esté verificado');
+  await rejects(call(demo, 'addPurchase', { storeId: 'cafe-luna', customerId: 'ana-uid', amount: 1000 }), 403, 'la demo no entra a comercios reales');
+  await rejects(call(demo, 'addStaff', { storeId: 'demo', email: 'x@x.com' }), 403, 'la demo no cambia el equipo');
+  await rejects(call(creator, 'createStore', { storeId: 'demo', name: 'X', ownerEmail: 'a@b.com' }), 400, 'nadie crea otro comercio "demo"');
+  await call(demo, 'resetDemo');
+  ok(data.get('stores/demo/customers/demo-c2').points === 820, 'restablecer demo vuelve a los datos de ejemplo');
+  await rejects(call(ana, 'resetDemo'), 403, 'un cliente no restablece la demo');
+
   console.log(`\n${passed} pruebas OK, ${failed} fallidas`);
   if (failed) process.exit(1);
 };

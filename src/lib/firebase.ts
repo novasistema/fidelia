@@ -7,7 +7,9 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
-  signOut
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -61,6 +63,27 @@ export const finishEmailLink = async (email: string) => {
 
 export const logout = () => signOut(auth);
 
+// Cuenta de demostración: usuario "demo" / contraseña "demo".
+// Firebase exige 6+ caracteres, así que por dentro usa otra clave. Solo da acceso al comercio demo.
+const DEMO_EMAIL = 'demo@fidelia.demo';
+const DEMO_INTERNAL_PASSWORD = 'fidelia-demo-2026';
+
+export const loginWithUserPassword = async (user: string, password: string) => {
+  if (user.trim().toLowerCase() !== 'demo' || password !== 'demo') {
+    throw { code: 'fidelia/bad-credentials' };
+  }
+  try {
+    await signInWithEmailAndPassword(auth, DEMO_EMAIL, DEMO_INTERNAL_PASSWORD);
+  } catch (err: any) {
+    // La primera vez la cuenta demo todavía no existe: se crea sola
+    if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential' || err?.code === 'auth/invalid-login-credentials') {
+      await createUserWithEmailAndPassword(auth, DEMO_EMAIL, DEMO_INTERNAL_PASSWORD);
+      return;
+    }
+    throw err;
+  }
+};
+
 export const authErrorMessage = (err: any) => {
   const code = err?.code || '';
   if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return 'Cerraste la ventana antes de terminar.';
@@ -68,6 +91,8 @@ export const authErrorMessage = (err: any) => {
   if (code === 'auth/invalid-action-code' || code === 'auth/expired-action-code') return 'El link ya se usó o venció. Pedí uno nuevo.';
   if (code === 'auth/unauthorized-domain') return 'Este dominio no está autorizado en Firebase (Authentication → Settings → Authorized domains).';
   if (code === 'auth/operation-not-allowed') return 'Este método de ingreso no está activado en Firebase.';
+  if (code === 'fidelia/bad-credentials') return 'Usuario o contraseña incorrectos.';
+  if (code === 'auth/email-already-in-use') return 'La cuenta demo existe con otra clave. Avisá al administrador.';
   if (code === 'auth/quota-exceeded') return 'Se alcanzó el límite diario de emails. Probá con Google o más tarde.';
   return err?.message || 'No se pudo iniciar sesión.';
 };
