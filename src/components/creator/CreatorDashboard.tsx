@@ -4,14 +4,14 @@ import { errMsg } from '../../lib/api';
 import { storeUrl } from '../../lib/route';
 import { Plus, Search, Power, ExternalLink, Shield, Store, AlertTriangle, CheckCircle2, LogOut, Copy, Check, Save } from 'lucide-react';
 import { FideliaLogo } from '../common/FideliaLogo';
-import { PLANS, planOf, limitLabel } from '../../../api/_lib/plans';
+import { PLANS, planOf, limitLabel, currentPrice, LAUNCH_PROMO_UNTIL } from '../../../api/_lib/plans';
 
 const money = (n: number) => `$${n.toLocaleString('es-AR')}`;
 const PlanOptions = () => (
   <>
     {PLANS.map(p => (
       <option key={p.id} value={p.id}>
-        {p.name} · {money(p.price)} + IVA · {limitLabel(p.cashiers)} cajero(s) · {p.customers ? `${p.customers} clientes` : 'clientes ilimitados'} · {limitLabel(p.branches)} sucursal(es)
+        {p.name} · {money(currentPrice(p))} + IVA · {limitLabel(p.cashiers)} cajero(s) · {p.customers ? `${p.customers} clientes` : 'clientes ilimitados'} · {limitLabel(p.branches)} sucursal(es)
       </option>
     ))}
   </>
@@ -288,7 +288,12 @@ export const CreatorDashboard: React.FC = () => {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs text-slate-400">Cuota mensual</label>
-                <div className={`${input} text-slate-300`}>{money(planOf(planId)?.price || 0)} + IVA</div>
+                <div className={`${input} text-slate-300`}>
+                  {money(planOf(planId) ? currentPrice(planOf(planId)!) : 0)} + IVA
+                  {planOf(planId) && currentPrice(planOf(planId)!) < planOf(planId)!.listPrice && (
+                    <span className="text-[11px] text-amber-300 block">Lanzamiento hasta {LAUNCH_PROMO_UNTIL.split('-').reverse().join('/')} · después {money(planOf(planId)!.listPrice)}</span>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="text-xs text-slate-400">Vence</label>
@@ -316,7 +321,7 @@ export const CreatorDashboard: React.FC = () => {
                 onChange={e => {
                   setSubPlanId(e.target.value);
                   const p = planOf(e.target.value);
-                  if (p) setSubFee(p.price);
+                  if (p) setSubFee(currentPrice(p));
                 }}
                 className={input}
               >

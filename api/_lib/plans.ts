@@ -3,7 +3,8 @@
 export interface Plan {
   id: string;
   name: string;
-  price: number;
+  price: number; // precio de lanzamiento vigente
+  listPrice: number; // precio original, después de la promo
   owners: number | null;
   cashiers: number | null;
   customers: number | null;
@@ -11,11 +12,15 @@ export interface Plan {
 }
 
 export const PLANS: Plan[] = [
-  { id: 'inicial', name: 'Inicial', price: 25000, owners: 1, cashiers: 1, customers: 300, branches: 1 },
-  { id: 'comercio', name: 'Comercio', price: 38000, owners: 1, cashiers: 4, customers: null, branches: 1 },
-  { id: 'pro', name: 'Pro', price: 47000, owners: 2, cashiers: 8, customers: null, branches: 2 },
-  { id: 'cadena', name: 'Cadena', price: 55000, owners: 3, cashiers: null, customers: null, branches: null }
+  { id: 'inicial', name: 'Inicial', price: 29000, listPrice: 35000, owners: 1, cashiers: 1, customers: 300, branches: 1 },
+  { id: 'comercio', name: 'Comercio', price: 42000, listPrice: 49000, owners: 1, cashiers: 4, customers: null, branches: 1 },
+  { id: 'pro', name: 'Pro', price: 50000, listPrice: 59000, owners: 2, cashiers: 8, customers: null, branches: 2 },
+  { id: 'cadena', name: 'Cadena', price: 58000, listPrice: 69000, owners: 3, cashiers: null, customers: null, branches: null }
 ];
+
+// Promo de lanzamiento: hasta esta fecha se cobra price; después, listPrice
+export const LAUNCH_PROMO_UNTIL = '2026-12-31';
+export const currentPrice = (p: Plan, today = new Date().toISOString().slice(0, 10)) => (today <= LAUNCH_PROMO_UNTIL ? p.price : p.listPrice);
 
 export const SETUP_FEE = 45000;
 export const IVA = 0.21;

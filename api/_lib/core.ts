@@ -2,7 +2,7 @@
 // Corre SOLO en el servidor. Los navegadores nunca escriben directo en la base:
 // así nadie puede regalarse puntos, saltear una suspensión o leer datos de otro.
 import { randomInt } from 'crypto';
-import { planOf, nextPlan, PLANS } from './plans.js';
+import { planOf, nextPlan, PLANS, currentPrice } from './plans.js';
 
 // ---------- Acceso a datos (Firestore real o memoria para pruebas) ----------
 export interface Tx {
@@ -843,7 +843,7 @@ const createStore: Handler = async (db, ctx, b) =>
     tx.set(S(storeId), {
       ...newStoreDoc(storeId, name, plan.name, str(b.subscriptionDueDate, 10)),
       planId: plan.id,
-      monthlyFee: b.monthlyFee != null && b.monthlyFee !== '' ? num(b.monthlyFee, 0) : plan.price,
+      monthlyFee: b.monthlyFee != null && b.monthlyFee !== '' ? num(b.monthlyFee, 0) : currentPrice(plan),
       customerCount: 0
     });
     tx.set(`${S(storeId)}/staff/${ownerEmail}`, { email: ownerEmail, role: 'owner', name: str(b.ownerName, 80), addedBy: ctx.email, addedAt: nowIso() });
@@ -867,7 +867,7 @@ const updateSubscription: Handler = async (db, ctx, b) =>
       if (!plan) fail(400, 'Plan inválido.');
       out.planId = plan!.id;
       out.clientPlanName = plan!.name;
-      if (!('monthlyFee' in b)) out.monthlyFee = plan!.price;
+      if (!('monthlyFee' in b)) out.monthlyFee = currentPrice(plan!);
     }
     tx.update(S(storeId), out);
     return { ok: true };
