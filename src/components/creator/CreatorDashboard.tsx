@@ -326,6 +326,7 @@ export const CreatorDashboard: React.FC = () => {
                 className={input}
               >
                 {!subPlanId && <option value="">Sin plan (sin límites)</option>}
+                {planOf(subPlanId)?.hidden && <option value={subPlanId}>{planOf(subPlanId)!.name} (plan anterior)</option>}
                 <PlanOptions />
               </select>
             </div>
