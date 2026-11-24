@@ -4,6 +4,18 @@ import { errMsg } from '../../lib/api';
 import { storeUrl } from '../../lib/route';
 import { Plus, Search, Power, ExternalLink, Shield, Store, AlertTriangle, CheckCircle2, LogOut, Copy, Check, Save } from 'lucide-react';
 import { FideliaLogo } from '../common/FideliaLogo';
+import { PLANS, planOf, limitLabel } from '../../../api/_lib/plans';
+
+const money = (n: number) => `$${n.toLocaleString('es-AR')}`;
+const PlanOptions = () => (
+  <>
+    {PLANS.map(p => (
+      <option key={p.id} value={p.id}>
+        {p.name} · {money(p.price)} + IVA · {limitLabel(p.cashiers)} cajero(s) · {p.customers ? `${p.customers} clientes` : 'clientes ilimitados'} · {limitLabel(p.branches)} sucursal(es)
+      </option>
+    ))}
+  </>
+);
 
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (d: number) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
@@ -32,12 +44,12 @@ export const CreatorDashboard: React.FC = () => {
   const [storeId, setStoreId] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerName, setOwnerName] = useState('');
-  const [plan, setPlan] = useState('Plan Fidelia');
+  const [planId, setPlanId] = useState('inicial');
   const [dueDate, setDueDate] = useState(addDays(30));
 
   // Formulario de suscripción
   const [subDue, setSubDue] = useState('');
-  const [subPlan, setSubPlan] = useState('');
+  const [subPlanId, setSubPlanId] = useState('');
   const [subFee, setSubFee] = useState<number | ''>('');
   const [subReason, setSubReason] = useState('');
 
@@ -79,7 +91,7 @@ export const CreatorDashboard: React.FC = () => {
 
   const submitNew = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = await run(() => createStore({ storeId, name, ownerEmail, ownerName, clientPlanName: plan, subscriptionDueDate: dueDate }));
+    const ok = await run(() => createStore({ storeId, name, ownerEmail, ownerName, planId, subscriptionDueDate: dueDate }));
     if (ok) {
       setShowNew(false);
       setName('');
@@ -92,7 +104,7 @@ export const CreatorDashboard: React.FC = () => {
   const openEdit = (s: StoreSummary) => {
     setEditing(s);
     setSubDue(s.subscriptionDueDate || '');
-    setSubPlan(s.clientPlanName || '');
+    setSubPlanId(s.planId || '');
     setSubFee(s.monthlyFee ?? '');
     setSubReason(s.suspensionReason || '');
     setError('');
@@ -101,7 +113,12 @@ export const CreatorDashboard: React.FC = () => {
   const saveSub = async () => {
     if (!editing) return;
     const ok = await run(() =>
-      updateSubscription(editing.id, { subscriptionDueDate: subDue, clientPlanName: subPlan, monthlyFee: Number(subFee) || 0, suspensionReason: subReason })
+      updateSubscription(editing.id, {
+        subscriptionDueDate: subDue,
+        monthlyFee: Number(subFee) || 0,
+        suspensionReason: subReason,
+        ...(subPlanId && subPlanId !== editing.planId ? { planId: subPlanId } : {})
+      })
     );
     if (ok) setEditing(null);
   };
@@ -197,7 +214,10 @@ export const CreatorDashboard: React.FC = () => {
                 ) : (
                   <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Activo</span>
                 )}
-                <span className="text-slate-400">{s.clientPlanName || 'Sin plan'}</span>
+                <span className="text-slate-400">
+                  {planOf(s.planId)?.name || s.clientPlanName || 'Sin plan (sin límites)'}
+                  {planOf(s.planId)?.customers ? ` · ${s.customerCount || 0}/${planOf(s.planId)!.customers} clientes` : ` · ${s.customerCount || 0} clientes`}
+                </span>
                 <span className="text-slate-400">Vence: <strong className="text-slate-200">{s.subscriptionDueDate || '—'}</strong></span>
                 {!!s.monthlyFee && <span className="text-slate-400">${Number(s.monthlyFee).toLocaleString('es-AR')}/mes</span>}
               </div>
@@ -259,10 +279,16 @@ export const CreatorDashboard: React.FC = () => {
                 <input value={ownerName} onChange={e => setOwnerName(e.target.value)} className={input} />
               </div>
             </div>
+            <div>
+              <label className="text-xs text-slate-400">Plan</label>
+              <select value={planId} onChange={e => setPlanId(e.target.value)} className={input}>
+                <PlanOptions />
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs text-slate-400">Plan</label>
-                <input value={plan} onChange={e => setPlan(e.target.value)} className={input} />
+                <label className="text-xs text-slate-400">Cuota mensual</label>
+                <div className={`${input} text-slate-300`}>{money(planOf(planId)?.price || 0)} + IVA</div>
               </div>
               <div>
                 <label className="text-xs text-slate-400">Vence</label>
@@ -283,13 +309,24 @@ export const CreatorDashboard: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4" onClick={() => setEditing(null)}>
           <div onClick={e => e.stopPropagation()} className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-3 text-white">
             <h3 className="font-black text-lg">Suscripción · {editing.name}</h3>
+            <div>
+              <label className="text-xs text-slate-400">Plan</label>
+              <select
+                value={subPlanId}
+                onChange={e => {
+                  setSubPlanId(e.target.value);
+                  const p = planOf(e.target.value);
+                  if (p) setSubFee(p.price);
+                }}
+                className={input}
+              >
+                {!subPlanId && <option value="">Sin plan (sin límites)</option>}
+                <PlanOptions />
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-slate-400">Plan</label>
-                <input value={subPlan} onChange={e => setSubPlan(e.target.value)} className={input} />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Cuota mensual ($)</label>
+              <div className="col-span-2">
+                <label className="text-xs text-slate-400">Cuota mensual ($, sin IVA)</label>
                 <input type="number" min="0" value={subFee} onChange={e => setSubFee(e.target.value === '' ? '' : Number(e.target.value))} className={input} />
               </div>
             </div>

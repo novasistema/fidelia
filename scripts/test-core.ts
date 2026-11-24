@@ -185,6 +185,28 @@ const run = async () => {
   const pv = await call(cashier, 'addPurchase', { storeId: 'cafe-luna', customerId: 'beto-uid', amount: 1000 });
   ok(pv.movement.points === 200, `multiplicador del nivel configurado (dio ${pv.movement.points})`);
 
+  console.log('Planes');
+  ok(data.get('stores/cafe-luna').planId === 'inicial' && data.get('stores/cafe-luna').monthlyFee === 25000, 'comercio nuevo arranca en plan Inicial');
+  ok(data.get('stores/cafe-luna').customerCount === 2, 'cuenta los clientes registrados');
+  await rejects(call(owner, 'addStaff', { storeId: 'cafe-luna', email: 'caja2@cafe.com', role: 'cashier' }), 403, 'Inicial: solo 1 cajero');
+  await call(owner, 'addStaff', { storeId: 'cafe-luna', email: cashier.email, role: 'cashier', name: 'Caja' });
+  ok(true, 're-guardar el mismo cajero no cuenta doble');
+  await rejects(call(owner, 'addStaff', { storeId: 'cafe-luna', email: 'socio@cafe.com', role: 'owner' }), 403, 'Inicial: solo 1 dueño');
+  await rejects(
+    call(owner, 'updateStore', { storeId: 'cafe-luna', patch: { branches: [{ name: 'A' }, { name: 'B' }] } }),
+    403,
+    'Inicial: solo 1 sucursal'
+  );
+  data.set('stores/cafe-luna', { ...data.get('stores/cafe-luna'), customerCount: 300 });
+  await rejects(call(user('z-uid', 'z@mail.com'), 'registerCustomer', { storeId: 'cafe-luna', name: 'Z', lastName: 'Z', dni: '40000001' }), 403, 'Inicial: tope de 300 clientes');
+  await rejects(call(owner, 'updateSubscription', { storeId: 'cafe-luna', planId: 'pro' }), 403, 'el dueño no se cambia de plan');
+  await call(creator, 'updateSubscription', { storeId: 'cafe-luna', planId: 'comercio' });
+  ok(data.get('stores/cafe-luna').monthlyFee === 38000 && data.get('stores/cafe-luna').clientPlanName === 'Comercio', 'el creador cambia el plan y la cuota se actualiza');
+  await call(owner, 'addStaff', { storeId: 'cafe-luna', email: 'caja2@cafe.com', role: 'cashier' });
+  await call(user('z-uid', 'z@mail.com'), 'registerCustomer', { storeId: 'cafe-luna', name: 'Z', lastName: 'Z', dni: '40000001' });
+  ok(data.get('stores/cafe-luna/customers/z-uid'), 'plan Comercio: clientes ilimitados y más cajeros');
+  await rejects(call(creator, 'updateSubscription', { storeId: 'cafe-luna', planId: 'oro' }), 400, 'plan inexistente');
+
   console.log('Cuenta demo');
   const demo = user('demo-uid', 'demo@fidelia.demo', false);
   const meDemo = await call(demo, 'me');

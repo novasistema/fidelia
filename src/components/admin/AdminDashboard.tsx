@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLoyalty } from '../../context/LoyaltyContext';
+import { PlanUsage } from './PlanUsage';
 import {
   Users,
   Zap,
@@ -66,6 +67,7 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12">
+      <PlanUsage />
       {/* Header Greeting - Matching photo 8 */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLoyalty } from '../../context/LoyaltyContext';
 import { UserCog, Trash2, UserPlus, Shield, Store } from 'lucide-react';
+import { PlanUsage } from './PlanUsage';
 
 // Dueños y cajeros del comercio. Cada uno entra en /admin con su propio email.
 export const AdminTeam: React.FC = () => {
@@ -47,6 +48,8 @@ export const AdminTeam: React.FC = () => {
         </div>
         <div className="w-12 h-12 bg-sky-100 text-sky-600 rounded-2xl flex items-center justify-center"><UserCog className="w-6 h-6" /></div>
       </div>
+
+      <PlanUsage show={['owners', 'cashiers']} />
 
       {msg && <div className={`p-3 rounded-xl text-xs font-semibold border ${msg.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{msg.text}</div>}
 

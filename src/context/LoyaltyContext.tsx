@@ -130,8 +130,8 @@ interface LoyaltyContextType {
 
   // Creador de la plataforma
   allStores: StoreSummary[];
-  createStore: (data: { storeId: string; name: string; ownerEmail: string; ownerName?: string; clientPlanName?: string; subscriptionDueDate?: string }) => Promise<void>;
-  updateSubscription: (storeId: string, data: { isSystemActive?: boolean; suspensionReason?: string; subscriptionDueDate?: string; clientPlanName?: string; monthlyFee?: number }) => Promise<void>;
+  createStore: (data: { storeId: string; name: string; ownerEmail: string; ownerName?: string; planId?: string; monthlyFee?: number; subscriptionDueDate?: string }) => Promise<void>;
+  updateSubscription: (storeId: string, data: { isSystemActive?: boolean; suspensionReason?: string; subscriptionDueDate?: string; planId?: string; monthlyFee?: number }) => Promise<void>;
 }
 
 const LoyaltyContext = createContext<LoyaltyContextType | undefined>(undefined);

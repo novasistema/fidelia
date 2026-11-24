@@ -42,6 +42,8 @@ export interface StoreSettings {
   subscriptionDueDate?: string;
   clientPlanName?: string;
   monthlyFee?: number;
+  planId?: string;
+  customerCount?: number;
   branches?: Branch[];
   bonusRules?: BonusRule[];
   tiers?: TierLevel[];

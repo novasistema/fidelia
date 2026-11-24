@@ -2,6 +2,7 @@
 // Corre SOLO en el servidor. Los navegadores nunca escriben directo en la base:
 // así nadie puede regalarse puntos, saltear una suspensión o leer datos de otro.
 import { randomInt } from 'crypto';
+import { planOf, nextPlan, PLANS } from './plans.js';
 
 // ---------- Acceso a datos (Firestore real o memoria para pruebas) ----------
 export interface Tx {
@@ -123,6 +124,13 @@ export const purchasePoints = (store: any, customer: any, amount: number, manual
   return { points, detail };
 };
 
+// ---------- Límites del plan ----------
+const planLimitMsg = (store: any, what: string, limit: number) => {
+  const next = nextPlan(store.planId);
+  const plan = planOf(store.planId);
+  return `Tu plan ${plan?.name || ''} permite ${limit} ${what}.${next ? ` Pasate al plan ${next.name} para tener más.` : ''} Consultá con tu proveedor de Fidelia.`;
+};
+
 // ---------- Lecturas comunes ----------
 const S = (storeId: string) => `stores/${storeId}`;
 
@@ -159,7 +167,8 @@ export const seedDemoStore = (tx: Tx) => {
       { id: 'br2', title: '+50 PUNTOS EN COMPRAS GRANDES', description: '50 puntos extra en compras desde $50.000', multiplier: 1, extraPoints: 50, daysOfWeek: [1, 2, 3, 4, 5, 6], isActive: true, minPurchaseAmount: 50000 }
     ],
     popupBanner: { id: 'pop', title: '¡Bienvenido al Club Demo!', description: 'Sumá puntos en cada compra y canjealos por premios. Esta es una demostración de Fidelia.', imageUrl: IMG('photo-1556742049-0a67d1656819'), ctaText: 'Ver premios', ctaAction: 'catalog', ctaLink: '', isActive: true, showOncePerSession: true },
-    isDemo: true
+    isDemo: true,
+    planId: 'cadena'
   };
   tx.set(S(DEMO_STORE), store);
   tx.set(`${S(DEMO_STORE)}/staff/${DEMO_EMAIL}`, { email: DEMO_EMAIL, role: 'owner', name: 'Usuario Demo', addedBy: 'sistema', addedAt: nowIso() });
@@ -304,6 +313,9 @@ const registerCustomer: Handler = async (db, ctx, b) =>
     const existing = await tx.get(`${S(storeId)}/customers/${ctx.uid}`);
     if (existing) return { customer: existing };
     if (!ctx.email) fail(400, 'Tu cuenta no tiene email.');
+    const custLimit = planOf(store.planId)?.customers;
+    if (custLimit != null && (store.customerCount || 0) >= custLimit)
+      fail(403, `${store.name} alcanzó el máximo de clientes de su plan. Avisale al comercio para que puedas sumarte.`);
     const name = nonEmpty(str(b.name, 60), 'Ingresá tu nombre.');
     const lastName = nonEmpty(str(b.lastName, 60), 'Ingresá tu apellido.');
     const dni = str(b.dni, 15).replace(/\D/g, '');
@@ -342,6 +354,7 @@ const registerCustomer: Handler = async (db, ctx, b) =>
       avatarUrl: str(ctx.photoURL, 500) || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name + ' ' + lastName)}`
     };
     tx.set(`${S(storeId)}/customers/${ctx.uid}`, customer);
+    tx.update(S(storeId), { customerCount: (store.customerCount || 0) + 1 });
     if (welcome > 0) {
       const mov = { id: newId('m'), customerId: ctx.uid, customerName: `${name} ${lastName}`, type: 'earned_bonus', points: welcome, description: '¡Bono de bienvenida!', date: nowLabel(), createdAt: nowIso() };
       tx.set(`${S(storeId)}/movements/${mov.id}`, mov);
@@ -612,7 +625,7 @@ const cleanPopup = (p: any) => ({
 const updateStore: Handler = async (db, ctx, b) =>
   db.run(async tx => {
     const storeId = str(b.storeId, 40);
-    await loadStore(tx, storeId, await isPlatformAdmin(tx, ctx));
+    const store = await loadStore(tx, storeId, await isPlatformAdmin(tx, ctx));
     await requireStaff(tx, ctx, storeId, ['owner']);
     const p = b.patch || {};
     const out: any = {};
@@ -632,7 +645,11 @@ const updateStore: Handler = async (db, ctx, b) =>
     if ('referralPoints' in p) out.referralPoints = int(p.referralPoints, 0, 1e6) || 0;
     if ('tiers' in p) out.tiers = cleanTiers(p.tiers);
     if ('bonusRules' in p) out.bonusRules = cleanBonusRules(p.bonusRules);
-    if ('branches' in p) out.branches = cleanBranches(p.branches);
+    if ('branches' in p) {
+      out.branches = cleanBranches(p.branches);
+      const lim = planOf(store.planId)?.branches;
+      if (lim != null && out.branches.length > lim) fail(403, planLimitMsg(store, lim === 1 ? 'sucursal' : 'sucursales', lim));
+    }
     if ('popupBanner' in p) out.popupBanner = cleanPopup(p.popupBanner);
     if (out.name === '') fail(400, 'El comercio necesita un nombre.');
     if (!Object.keys(out).length) fail(400, 'No hay cambios para guardar.');
@@ -770,12 +787,19 @@ const addStaffTx = async (tx: Tx, storeId: string, email: string, role: 'owner' 
 const addStaff: Handler = async (db, ctx, b) =>
   db.run(async tx => {
     const storeId = str(b.storeId, 40);
-    await loadStore(tx, storeId, await isPlatformAdmin(tx, ctx));
+    const store = await loadStore(tx, storeId, await isPlatformAdmin(tx, ctx));
     await requireStaff(tx, ctx, storeId, ['owner']);
     if (isDemo(ctx)) fail(403, 'En la demo no se puede modificar el equipo.');
     const email = str(b.email, 120).toLowerCase();
     if (!EMAIL_RE.test(email)) fail(400, 'Email inválido.');
     const role = b.role === 'owner' ? 'owner' : 'cashier';
+    const plan = planOf(store.planId);
+    const lim = plan ? (role === 'owner' ? plan.owners : plan.cashiers) : null;
+    if (lim != null) {
+      const same = await tx.query(`${S(storeId)}/staff`, 'role', role);
+      if (same.filter(m => m.id !== email).length >= lim)
+        fail(403, planLimitMsg(store, role === 'owner' ? (lim === 1 ? 'dueño' : 'dueños') : lim === 1 ? 'cajero' : 'cajeros', lim));
+    }
     await addStaffTx(tx, storeId, email, role, str(b.name, 80), ctx.email);
     return { ok: true };
   });
@@ -815,7 +839,13 @@ const createStore: Handler = async (db, ctx, b) =>
     const ownerEmail = str(b.ownerEmail, 120).toLowerCase();
     if (!EMAIL_RE.test(ownerEmail)) fail(400, 'Indicá un email válido para el dueño.');
     const idx = (await tx.get(`staffIndex/${ownerEmail}`)) || { email: ownerEmail, stores: {} };
-    tx.set(S(storeId), newStoreDoc(storeId, name, str(b.clientPlanName, 60) || 'Plan Fidelia', str(b.subscriptionDueDate, 10)));
+    const plan = planOf(str(b.planId, 20)) || PLANS[0];
+    tx.set(S(storeId), {
+      ...newStoreDoc(storeId, name, plan.name, str(b.subscriptionDueDate, 10)),
+      planId: plan.id,
+      monthlyFee: b.monthlyFee != null && b.monthlyFee !== '' ? num(b.monthlyFee, 0) : plan.price,
+      customerCount: 0
+    });
     tx.set(`${S(storeId)}/staff/${ownerEmail}`, { email: ownerEmail, role: 'owner', name: str(b.ownerName, 80), addedBy: ctx.email, addedAt: nowIso() });
     tx.set(`staffIndex/${ownerEmail}`, { email: ownerEmail, stores: { ...(idx.stores || {}), [storeId]: 'owner' } });
     return { storeId };
@@ -832,6 +862,13 @@ const updateSubscription: Handler = async (db, ctx, b) =>
     if ('subscriptionDueDate' in b) out.subscriptionDueDate = str(b.subscriptionDueDate, 10);
     if ('clientPlanName' in b) out.clientPlanName = str(b.clientPlanName, 60);
     if ('monthlyFee' in b) out.monthlyFee = num(b.monthlyFee, 0);
+    if ('planId' in b) {
+      const plan = planOf(str(b.planId, 20));
+      if (!plan) fail(400, 'Plan inválido.');
+      out.planId = plan!.id;
+      out.clientPlanName = plan!.name;
+      if (!('monthlyFee' in b)) out.monthlyFee = plan!.price;
+    }
     tx.update(S(storeId), out);
     return { ok: true };
   });
